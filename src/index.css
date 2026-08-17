@@ -88,3 +88,49 @@ code {
 .big-emoji { font-size: 4rem; }
 .treasure h1 { color: var(--brand-dark); font-size: 2.2rem; }
 .rank-line { font-size: 1.25rem; font-weight: 700; }
+
+/* ---------- Admin dashboard ---------- */
+.admin { min-height: 100dvh; }
+.admin-nav {
+  display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1.25rem;
+  background: #fff; border-bottom: 1px solid var(--line); flex-wrap: wrap;
+  position: sticky; top: 0; z-index: 5;
+}
+.admin-brand { font-weight: 800; margin-right: 0.5rem; }
+.admin-nav a {
+  color: var(--muted); text-decoration: none; font-weight: 600;
+  padding: 0.3rem 0.5rem; border-radius: 8px;
+}
+.admin-nav a.active { color: var(--brand-dark); background: #f7ead9; }
+.admin-nav .link-btn { margin-left: auto; }
+.admin-main { padding: 1.25rem; max-width: 1100px; margin: 0 auto; display: grid; gap: 1.25rem; }
+.admin-login { display: grid; place-items: center; min-height: 100dvh; padding: 1rem; }
+.admin-login .card { width: 100%; max-width: 380px; }
+.board-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 1.25rem; align-items: start; }
+@media (max-width: 800px) { .board-layout { grid-template-columns: 1fr; } }
+.board-table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
+.board-table th, .board-table td {
+  text-align: left; padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+.board-table th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.row-finished { background: #fdf6e3; }
+.progress-bar {
+  background: var(--line); border-radius: 99px; height: 8px; width: 120px;
+  display: inline-block; margin-right: 0.5rem; vertical-align: middle; overflow: hidden;
+}
+.progress-fill { background: var(--good); height: 100%; border-radius: 99px; transition: width 0.4s ease; }
+.attempt-feed { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.attempt-feed li { display: flex; gap: 0.45rem; align-items: baseline; font-size: 0.92rem; flex-wrap: wrap; }
+.attempt-feed time { color: var(--muted); font-size: 0.8rem; margin-left: auto; }
+.inline-form { display: flex; gap: 0.6rem; align-items: end; flex-wrap: wrap; }
+.inline-form label { margin: 0 0 0.25rem; }
+.inline-form input { width: auto; flex: 1; min-width: 200px; }
+.btn-row { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+.status { text-transform: uppercase; letter-spacing: 0.05em; }
+.status-live { color: var(--good); }
+.status-paused { color: var(--warn); }
+.status-ended { color: var(--bad); }
+.status-setup { color: var(--muted); }
+.hint { color: var(--muted); font-size: 0.9rem; }
+.control-layout { display: grid; gap: 1.25rem; }
