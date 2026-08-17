@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient'
+import { generateCode } from '../lib/codes'
 
 export type BoardRow = {
   id: string
@@ -34,4 +35,36 @@ export async function fetchRecentAttempts(limit = 20): Promise<AttemptRow[]> {
     .limit(limit)
   if (error) throw error
   return data as unknown as AttemptRow[]
+}
+
+export type AdminRpcResult = { ok: boolean; error?: string; [key: string]: unknown }
+
+async function adminRpc(fn: string, args?: Record<string, unknown>): Promise<AdminRpcResult> {
+  const { data, error } = await supabase.rpc(fn, args)
+  if (error) throw error
+  return data as AdminRpcResult
+}
+
+export async function createTeam(name: string): Promise<void> {
+  const { error } = await supabase.from('teams').insert({ name, team_code: generateCode() })
+  if (error) throw error
+}
+
+export async function updateTeamName(id: string, name: string): Promise<void> {
+  const { error } = await supabase.from('teams').update({ name }).eq('id', id)
+  if (error) throw error
+}
+
+export async function regenerateTeamCode(id: string): Promise<void> {
+  const { error } = await supabase.from('teams').update({ team_code: generateCode() }).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteTeam(id: string): Promise<void> {
+  const { error } = await supabase.from('teams').delete().eq('id', id)
+  if (error) throw error
+}
+
+export function setTeamPosition(teamId: string, position: number): Promise<AdminRpcResult> {
+  return adminRpc('set_team_position', { p_team_id: teamId, p_position: position })
 }
