@@ -68,3 +68,71 @@ export async function deleteTeam(id: string): Promise<void> {
 export function setTeamPosition(teamId: string, position: number): Promise<AdminRpcResult> {
   return adminRpc('set_team_position', { p_team_id: teamId, p_position: position })
 }
+
+export type StationRow = {
+  id: string
+  name: string
+  clue_text: string
+  code: string
+  is_final: boolean
+  sort_order: number
+}
+
+export async function fetchStations(): Promise<StationRow[]> {
+  const { data, error } = await supabase
+    .from('stations')
+    .select('id, name, clue_text, code, is_final, sort_order')
+    .order('sort_order')
+  if (error) throw error
+  return data as StationRow[]
+}
+
+export async function createStation(input: {
+  name: string
+  clue_text: string
+  code: string
+  sort_order: number
+}): Promise<void> {
+  const { error } = await supabase.from('stations').insert(input)
+  if (error) throw error
+}
+
+export async function updateStation(
+  id: string,
+  patch: Partial<Pick<StationRow, 'name' | 'clue_text' | 'code' | 'sort_order'>>,
+): Promise<void> {
+  const { error } = await supabase.from('stations').update(patch).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteStation(id: string): Promise<void> {
+  const { error } = await supabase.from('stations').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function makeFinal(id: string): Promise<void> {
+  const { error: clearError } = await supabase.from('stations').update({ is_final: false }).eq('is_final', true)
+  if (clearError) throw clearError
+  const { error } = await supabase.from('stations').update({ is_final: true }).eq('id', id)
+  if (error) throw error
+}
+
+export async function swapOrder(a: StationRow, b: StationRow): Promise<void> {
+  const { error: firstError } = await supabase.from('stations').update({ sort_order: b.sort_order }).eq('id', a.id)
+  if (firstError) throw firstError
+  const { error: secondError } = await supabase.from('stations').update({ sort_order: a.sort_order }).eq('id', b.id)
+  if (secondError) throw secondError
+}
+
+export type GameRow = {
+  id: number
+  status: import('../lib/api').GameStatus
+  started_at: string | null
+  ended_at: string | null
+}
+
+export async function fetchGame(): Promise<GameRow> {
+  const { data, error } = await supabase.from('game').select('*').single()
+  if (error) throw error
+  return data as GameRow
+}
