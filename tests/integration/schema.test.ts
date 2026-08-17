@@ -3,9 +3,7 @@ import { serviceClient, resetDb, seedStations, createTeam } from './helpers'
 const service = serviceClient()
 
 describe('schema', () => {
-  beforeEach(async () => {
-    await resetDb(service)
-  })
+  beforeEach(() => resetDb(service))
 
   it('has a single game row in setup', async () => {
     const { data, error } = await service.from('game').select('*')
