@@ -77,4 +77,11 @@ describe('StationsPanel', () => {
     render(<StationsPanel />)
     expect(await screen.findByText(/network down/i)).toBeInTheDocument()
   })
+
+  it('blocks station deletion while the game is running', async () => {
+    vi.mocked(adminApi.fetchStations).mockResolvedValue([station({})])
+    vi.mocked(adminApi.fetchGame).mockResolvedValue({ ...setupGame, status: 'live' })
+    render(<StationsPanel />)
+    expect(await screen.findByRole('button', { name: /delete/i })).toBeDisabled()
+  })
 })

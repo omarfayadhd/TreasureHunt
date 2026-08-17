@@ -10,12 +10,13 @@ function finishRank(rows: BoardRow[], target: BoardRow): number {
 const RESULT_ICONS = { correct: '✅', wrong: '❌', already_used: '🔁' } as const
 
 export default function LiveBoard() {
-  const { rows, attempts } = useAdminBoard()
+  const { rows, attempts, error } = useAdminBoard()
 
   return (
     <div className="board-layout">
       <section className="card">
         <h2>Live board</h2>
+        {error && <p className="msg msg-bad" role="alert">{error}</p>}
         <table className="board-table">
           <thead>
             <tr>

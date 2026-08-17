@@ -6,11 +6,17 @@ import { sortBoard } from './sortBoard'
 export function useAdminBoard() {
   const [rows, setRows] = useState<BoardRow[]>([])
   const [attempts, setAttempts] = useState<AttemptRow[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
-    const [board, recent] = await Promise.all([fetchBoard(), fetchRecentAttempts()])
-    setRows(sortBoard(board))
-    setAttempts(recent)
+    try {
+      const [board, recent] = await Promise.all([fetchBoard(), fetchRecentAttempts()])
+      setRows(sortBoard(board))
+      setAttempts(recent)
+      setError(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
   }, [])
 
   useEffect(() => {
@@ -25,5 +31,5 @@ export function useAdminBoard() {
     }
   }, [reload])
 
-  return { rows, attempts, reload }
+  return { rows, attempts, error, reload }
 }

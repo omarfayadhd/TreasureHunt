@@ -22,8 +22,14 @@ supabase db reset       # applies all migrations
 npm run dev             # player app at /, admin at /admin
 ```
 
-`.env.local` points the app at the local stack. If `supabase status` prints
-different keys than the ones committed there, update the file.
+Create `.env.local` (gitignored) pointing the app at the local stack:
+
+```bash
+cp .env.example .env.local
+```
+
+Then set `VITE_SUPABASE_URL=http://127.0.0.1:54321` and set
+`VITE_SUPABASE_ANON_KEY` to the anon key printed by `supabase status`.
 
 Create a local admin user: open http://127.0.0.1:54323 → Authentication →
 Add user (e.g. `admin@local.dev` / `local-admin-123`, auto-confirm), then sign

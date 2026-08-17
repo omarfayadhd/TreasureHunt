@@ -147,6 +147,8 @@ export default function StationsPanel() {
                     <button className="link-btn" onClick={() => startEdit(station)}>Edit</button>
                     <button
                       className="danger"
+                      disabled={gameRunning}
+                      title="Stations can't be deleted while the hunt is running"
                       onClick={() => {
                         if (confirm(`Delete station "${station.name}"? Team routes that include it must be regenerated.`)) {
                           run(() => deleteStation(station.id))

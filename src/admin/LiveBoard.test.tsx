@@ -36,6 +36,7 @@ describe('LiveBoard', () => {
           teams: { name: 'Hunters' },
         },
       ],
+      error: null,
       reload: vi.fn(),
     })
     render(<LiveBoard />)
@@ -47,9 +48,15 @@ describe('LiveBoard', () => {
   })
 
   it('shows empty states', () => {
-    vi.mocked(useAdminBoard).mockReturnValue({ rows: [], attempts: [], reload: vi.fn() })
+    vi.mocked(useAdminBoard).mockReturnValue({ rows: [], attempts: [], error: null, reload: vi.fn() })
     render(<LiveBoard />)
     expect(screen.getByText(/no teams yet/i)).toBeInTheDocument()
     expect(screen.getByText(/no guesses yet/i)).toBeInTheDocument()
+  })
+
+  it('surfaces a load failure', () => {
+    vi.mocked(useAdminBoard).mockReturnValue({ rows: [], attempts: [], error: 'network down', reload: vi.fn() })
+    render(<LiveBoard />)
+    expect(screen.getByText(/network down/i)).toBeInTheDocument()
   })
 })
