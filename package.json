@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run --passWithNoTests",
     "test:unit": "vitest run --project unit",
-    "test:integration": "vitest run --project integration"
+    "test:integration": "vitest run --project integration --no-file-parallelism"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
