@@ -57,7 +57,7 @@ describe('generate_routes', () => {
   })
 
   it('regenerates everything in setup but only fills gaps when live', async () => {
-    const stations = await seedStations(service, 3)
+    await seedStations(service, 3)
     const teamA = await createTeam(service, 'A', 'TEAM-11')
     await admin.rpc('generate_routes')
     await admin.rpc('start_game')
