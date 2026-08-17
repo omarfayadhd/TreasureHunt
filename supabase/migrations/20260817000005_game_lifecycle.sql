@@ -108,6 +108,7 @@ set search_path = public
 as $$
 begin
   perform assert_admin();
+  -- 'where true' is required: Supabase API sessions load the safeupdate extension, which rejects WHERE-less UPDATE/DELETE (SQLSTATE 21000) even inside SECURITY DEFINER functions called via RPC.
   update teams set current_position = 0, finished_at = null where true;
   delete from attempts where true;
   update game set status = 'setup', started_at = null, ended_at = null where id = 1;
