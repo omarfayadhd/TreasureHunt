@@ -136,3 +136,29 @@ export async function fetchGame(): Promise<GameRow> {
   if (error) throw error
   return data as GameRow
 }
+
+export const startGame = (): Promise<AdminRpcResult> => adminRpc('start_game')
+export const pauseGame = (): Promise<AdminRpcResult> => adminRpc('pause_game')
+export const resumeGame = (): Promise<AdminRpcResult> => adminRpc('resume_game')
+export const endGame = (): Promise<AdminRpcResult> => adminRpc('end_game')
+export const resetProgress = (): Promise<AdminRpcResult> => adminRpc('reset_progress')
+export const generateRoutes = (): Promise<AdminRpcResult> => adminRpc('generate_routes')
+
+export type RoutePreview = { team: string; stops: string[] }
+
+export async function fetchRoutePreview(): Promise<RoutePreview[]> {
+  const { data, error } = await supabase
+    .from('route_stops')
+    .select('team_id, position, teams(name), stations(name)')
+    .order('team_id')
+    .order('position')
+  if (error) throw error
+  type Row = { team_id: string; position: number; teams: { name: string } | null; stations: { name: string } | null }
+  const byTeam = new Map<string, RoutePreview>()
+  for (const row of (data as unknown as Row[]) ?? []) {
+    const entry = byTeam.get(row.team_id) ?? { team: row.teams?.name ?? '?', stops: [] }
+    entry.stops.push(row.stations?.name ?? '?')
+    byTeam.set(row.team_id, entry)
+  }
+  return [...byTeam.values()].sort((a, b) => a.team.localeCompare(b.team))
+}
