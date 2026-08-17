@@ -134,3 +134,29 @@ code {
 .status-setup { color: var(--muted); }
 .hint { color: var(--muted); font-size: 0.9rem; }
 .control-layout { display: grid; gap: 1.25rem; }
+
+/* ---------- Print sheets ---------- */
+.print-page { display: grid; gap: 1.25rem; }
+.print-section {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem;
+}
+.print-card {
+  border: 2px dashed #b8b2a4; border-radius: 12px; padding: 1.25rem;
+  text-align: center; background: #fff; break-inside: avoid;
+}
+.print-eyebrow {
+  font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted); margin: 0;
+}
+.print-code {
+  font-family: ui-monospace, Menlo, monospace; font-size: 2.2rem; font-weight: 800;
+  margin: 0.5rem 0; letter-spacing: 0.08em;
+}
+.print-team { font-size: 1.3rem; font-weight: 700; margin: 0.4rem 0 0; }
+.print-small { color: var(--muted); margin: 0; font-size: 0.9rem; }
+@media print {
+  .admin-nav, .no-print { display: none !important; }
+  .admin-main { max-width: none; padding: 0; }
+  body { background: #fff; }
+  .print-section { grid-template-columns: repeat(2, 1fr); }
+}
