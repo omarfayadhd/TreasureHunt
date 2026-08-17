@@ -58,4 +58,18 @@ describe('TeamsPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: '-1' }))
     expect(adminApi.setTeamPosition).toHaveBeenCalledWith('team-1', 1)
   })
+
+  it('surfaces an rpc business failure', async () => {
+    vi.mocked(adminApi.fetchBoard).mockResolvedValue([row({})])
+    vi.mocked(adminApi.setTeamPosition).mockResolvedValue({ ok: false, error: 'invalid_team' })
+    render(<TeamsPanel />)
+    await userEvent.click(await screen.findByRole('button', { name: '+1' }))
+    expect(await screen.findByText(/invalid_team/i)).toBeInTheDocument()
+  })
+
+  it('surfaces an initial load failure', async () => {
+    vi.mocked(adminApi.fetchBoard).mockRejectedValue(new Error('network down'))
+    render(<TeamsPanel />)
+    expect(await screen.findByText(/network down/i)).toBeInTheDocument()
+  })
 })

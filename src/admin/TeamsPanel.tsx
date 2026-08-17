@@ -15,13 +15,16 @@ export default function TeamsPanel() {
   }, [])
 
   useEffect(() => {
-    load()
+    load().catch(e => setError(e instanceof Error ? e.message : String(e)))
   }, [load])
 
   async function run(action: () => Promise<unknown>) {
     setError(null)
     try {
-      await action()
+      const result = await action()
+      if (result && typeof result === 'object' && 'ok' in result && (result as { ok: boolean; error?: string }).ok === false) {
+        setError(`Error: ${(result as { error?: string }).error}`)
+      }
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
