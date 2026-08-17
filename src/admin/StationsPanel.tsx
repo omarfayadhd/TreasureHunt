@@ -24,7 +24,7 @@ export default function StationsPanel() {
   }, [])
 
   useEffect(() => {
-    load()
+    load().catch(e => setError(e instanceof Error ? e.message : String(e)))
   }, [load])
 
   async function run(action: () => Promise<unknown>) {

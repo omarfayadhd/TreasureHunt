@@ -71,4 +71,10 @@ describe('StationsPanel', () => {
     render(<StationsPanel />)
     expect(await screen.findByText(/hunt is live/i)).toBeInTheDocument()
   })
+
+  it('surfaces an initial load failure', async () => {
+    vi.mocked(adminApi.fetchStations).mockRejectedValue(new Error('network down'))
+    render(<StationsPanel />)
+    expect(await screen.findByText(/network down/i)).toBeInTheDocument()
+  })
 })
