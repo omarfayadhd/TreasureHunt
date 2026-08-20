@@ -22,7 +22,13 @@ export default defineWorkspace([
       globals: true,
       include: ['tests/integration/**/*.test.ts'],
       testTimeout: 30000,
-      fileParallelism: false,
+      // These tests share one database and truncate it in beforeEach, so they
+      // MUST NOT run concurrently. `fileParallelism: false` is a root-level
+      // option that vitest ignores inside a workspace project — it silently did
+      // nothing here — so serialize with a single fork instead, which is a
+      // per-project option and needs no CLI flag.
+      pool: 'forks',
+      poolOptions: { forks: { singleFork: true } },
     },
   },
 ])
