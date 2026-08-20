@@ -35,8 +35,11 @@ export default function ScratchCard({ card, isCurrent, onOpen }: Props) {
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
 
     const { width, height } = canvas.getBoundingClientRect()
-    canvas.width = Math.max(1, Math.floor(width))
-    canvas.height = Math.max(1, Math.floor(height))
+    const paintWidth = Math.floor(width)
+    const paintHeight = Math.floor(height)
+    if (paintWidth <= 0 || paintHeight <= 0) return
+    canvas.width = paintWidth
+    canvas.height = paintHeight
     context.fillStyle = '#2121de'
     context.fillRect(0, 0, canvas.width, canvas.height)
     // Dither dots so the foil reads as pixel art rather than a flat block
@@ -97,7 +100,7 @@ export default function ScratchCard({ card, isCurrent, onOpen }: Props) {
         <canvas
           ref={canvasRef}
           className="scratch-foil"
-          hidden={!canScratch}
+          style={{ pointerEvents: canScratch ? undefined : 'none' }}
           onPointerDown={event => {
             setScratching(true)
             event.currentTarget.setPointerCapture(event.pointerId)
