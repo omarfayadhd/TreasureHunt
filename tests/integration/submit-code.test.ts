@@ -141,6 +141,46 @@ describe('submit_code', () => {
     for (const id of [a.id, b.id]) expect((await teamRow(id)).current_position).toBe(2)
   })
 
+  it('serializes two teams racing to clear the FINAL level at once', async () => {
+    const { a, b } = await threeTeamGame()
+    for (const team of [['ALPHA1', a.id], ['BETA22', b.id]] as const) {
+      await submit(team[0], 'CODE1')
+      await clearCooldown(service, team[1])
+      await submit(team[0], 'CODE2')
+      await clearCooldown(service, team[1])
+    }
+
+    const [first, second] = await Promise.all([submit('ALPHA1', 'CODE3'), submit('BETA22', 'CODE3')])
+    expect(first).toMatchObject({ ok: true, correct: true })
+    expect(second).toMatchObject({ ok: true, correct: true })
+
+    const rowA = await teamRow(a.id)
+    const rowB = await teamRow(b.id)
+    const statuses = [rowA.status, rowB.status].sort()
+    expect(statuses).toEqual(['finished', 'winner'])
+
+    const placeOf = async (code: string) => {
+      const { data, error } = await anon.rpc('team_view', { p_team_code: code })
+      if (error) throw new Error(error.message)
+      return (data as { place: number }).place
+    }
+    const places = [await placeOf('ALPHA1'), await placeOf('BETA22')].sort()
+    expect(places).toEqual([1, 2])
+  })
+
+  it('never lets the same team double-advance on a concurrent double-submit', async () => {
+    const { a } = await threeTeamGame()
+
+    const [first, second] = await Promise.all([submit('ALPHA1', 'CODE1'), submit('ALPHA1', 'CODE1')])
+    const outcomes = [first, second].map(r => (r.ok && r.correct ? 'correct' : r.ok === false ? r.error : r.reason))
+    expect(outcomes.filter(o => o === 'correct')).toHaveLength(1)
+    expect(outcomes.filter(o => o === 'cooldown')).toHaveLength(1)
+
+    expect((await teamRow(a.id)).current_position).toBe(1)
+    const { data } = await service.from('attempts').select('result').eq('team_id', a.id).eq('result', 'correct')
+    expect(data).toHaveLength(1)
+  })
+
   it('rejects submits while the game is paused', async () => {
     await threeTeamGame()
     await setGameStatus(service, 'paused')
