@@ -1,40 +1,32 @@
 import { supabase } from '../lib/supabaseClient'
-import { generateCode } from '../lib/codes'
+import type { TeamStatus } from '../lib/api'
 
-export type BoardRow = {
+export type MonitorRow = {
   id: string
   name: string
   team_code: string
-  current_position: number
+  status: TeamStatus
+  cleared_level: number
+  out_at_level: number | null
   finished_at: string | null
+  eliminated_at: string | null
   created_at: string
-  total: number
-  next_station: string | null
+  started: boolean
+  max_opened_level: number | null
   last_solve_at: string | null
+  wrong_count: number
 }
 
-export async function fetchBoard(): Promise<BoardRow[]> {
-  const { data, error } = await supabase.from('admin_board').select('*')
+export async function fetchMonitor(): Promise<MonitorRow[]> {
+  const { data, error } = await supabase.from('admin_monitor').select('*')
   if (error) throw error
-  return data as BoardRow[]
+  return data as MonitorRow[]
 }
 
-export type AttemptRow = {
-  id: number
-  submitted_code: string
-  result: 'correct' | 'wrong' | 'already_used'
-  created_at: string
-  teams: { name: string } | null
-}
-
-export async function fetchRecentAttempts(limit = 20): Promise<AttemptRow[]> {
-  const { data, error } = await supabase
-    .from('attempts')
-    .select('id, submitted_code, result, created_at, teams(name)')
-    .order('created_at', { ascending: false })
-    .limit(limit)
+export async function countStations(): Promise<number> {
+  const { count, error } = await supabase.from('stations').select('id', { count: 'exact', head: true })
   if (error) throw error
-  return data as unknown as AttemptRow[]
+  return count ?? 0
 }
 
 export type AdminRpcResult = { ok: boolean; error?: string; [key: string]: unknown }
@@ -45,43 +37,47 @@ async function adminRpc(fn: string, args?: Record<string, unknown>): Promise<Adm
   return data as AdminRpcResult
 }
 
-export async function createTeam(name: string): Promise<void> {
-  const { error } = await supabase.from('teams').insert({ name, team_code: generateCode() })
-  if (error) throw error
+/**
+ * Admin RPCs report refusals as `{ ok: false, error }` rather than throwing.
+ * Plain table writes resolve to `undefined`, so those always read as accepted.
+ */
+export function refusal(result: unknown): string | null {
+  if (result && typeof result === 'object' && 'ok' in result && (result as AdminRpcResult).ok === false) {
+    return (result as AdminRpcResult).error ?? 'unknown'
+  }
+  return null
 }
 
-export async function updateTeamName(id: string, name: string): Promise<void> {
-  const { error } = await supabase.from('teams').update({ name }).eq('id', id)
-  if (error) throw error
-}
+// Team writes all go through admin RPCs: they check the game status server-side
+// (so a stale tab can't eject a live team) and mint codes from the
+// collision-checked server generator rather than a guessable browser word list.
+export const createTeam = (name: string): Promise<AdminRpcResult> =>
+  adminRpc('create_team', { p_name: name })
 
-export async function regenerateTeamCode(id: string): Promise<void> {
-  const { error } = await supabase.from('teams').update({ team_code: generateCode() }).eq('id', id)
-  if (error) throw error
-}
+export const updateTeamName = (id: string, name: string): Promise<AdminRpcResult> =>
+  adminRpc('rename_team', { p_team_id: id, p_name: name })
 
-export async function deleteTeam(id: string): Promise<void> {
-  const { error } = await supabase.from('teams').delete().eq('id', id)
-  if (error) throw error
-}
+export const regenerateTeamCode = (id: string): Promise<AdminRpcResult> =>
+  adminRpc('regenerate_team_code', { p_team_id: id })
 
-export function setTeamPosition(teamId: string, position: number): Promise<AdminRpcResult> {
-  return adminRpc('set_team_position', { p_team_id: teamId, p_position: position })
-}
+export const deleteTeam = (id: string): Promise<AdminRpcResult> =>
+  adminRpc('delete_team', { p_team_id: id })
+
+export const generateTeams = (count: number): Promise<AdminRpcResult> =>
+  adminRpc('generate_teams', { p_count: count })
 
 export type StationRow = {
   id: string
   name: string
   clue_text: string
   code: string
-  is_final: boolean
   sort_order: number
 }
 
 export async function fetchStations(): Promise<StationRow[]> {
   const { data, error } = await supabase
     .from('stations')
-    .select('id, name, clue_text, code, is_final, sort_order')
+    .select('id, name, clue_text, code, sort_order')
     .order('sort_order')
   if (error) throw error
   return data as StationRow[]
@@ -105,30 +101,31 @@ export async function updateStation(
   if (error) throw error
 }
 
+export async function suggestStationCode(): Promise<string> {
+  const result = await adminRpc('suggest_station_code')
+  if (!result.ok) throw new Error(result.error ?? 'suggest_station_code failed')
+  return result.code as string
+}
+
 export async function deleteStation(id: string): Promise<void> {
   const { error } = await supabase.from('stations').delete().eq('id', id)
   if (error) throw error
 }
 
-export async function makeFinal(id: string): Promise<void> {
-  const { error: clearError } = await supabase.from('stations').update({ is_final: false }).eq('is_final', true)
-  if (clearError) throw clearError
-  const { error } = await supabase.from('stations').update({ is_final: true }).eq('id', id)
-  if (error) throw error
-}
-
-export async function swapOrder(a: StationRow, b: StationRow): Promise<void> {
-  const { error: firstError } = await supabase.from('stations').update({ sort_order: b.sort_order }).eq('id', a.id)
-  if (firstError) throw firstError
-  const { error: secondError } = await supabase.from('stations').update({ sort_order: a.sort_order }).eq('id', b.id)
-  if (secondError) throw secondError
-}
+/**
+ * `sort_order` is uniquely constrained, so two separate UPDATEs always collide
+ * on the row still holding the target level. The swap happens server-side in
+ * one transaction instead.
+ */
+export const swapOrder = (a: StationRow, b: StationRow): Promise<AdminRpcResult> =>
+  adminRpc('swap_station_levels', { p_a: a.id, p_b: b.id })
 
 export type GameRow = {
   id: number
   status: import('../lib/api').GameStatus
   started_at: string | null
   ended_at: string | null
+  initial_team_count: number | null
 }
 
 export async function fetchGame(): Promise<GameRow> {
@@ -142,23 +139,3 @@ export const pauseGame = (): Promise<AdminRpcResult> => adminRpc('pause_game')
 export const resumeGame = (): Promise<AdminRpcResult> => adminRpc('resume_game')
 export const endGame = (): Promise<AdminRpcResult> => adminRpc('end_game')
 export const resetProgress = (): Promise<AdminRpcResult> => adminRpc('reset_progress')
-export const generateRoutes = (): Promise<AdminRpcResult> => adminRpc('generate_routes')
-
-export type RoutePreview = { team: string; stops: string[] }
-
-export async function fetchRoutePreview(): Promise<RoutePreview[]> {
-  const { data, error } = await supabase
-    .from('route_stops')
-    .select('team_id, position, teams(name), stations(name)')
-    .order('team_id')
-    .order('position')
-  if (error) throw error
-  type Row = { team_id: string; position: number; teams: { name: string } | null; stations: { name: string } | null }
-  const byTeam = new Map<string, RoutePreview>()
-  for (const row of (data as unknown as Row[]) ?? []) {
-    const entry = byTeam.get(row.team_id) ?? { team: row.teams?.name ?? '?', stops: [] }
-    entry.stops.push(row.stations?.name ?? '?')
-    byTeam.set(row.team_id, entry)
-  }
-  return [...byTeam.values()].sort((a, b) => a.team.localeCompare(b.team))
-}

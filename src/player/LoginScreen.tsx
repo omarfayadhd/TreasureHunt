@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { ChestSprite } from './sprites'
 
 type Props = {
   onLogin: (code: string) => void
@@ -16,21 +17,29 @@ export default function LoginScreen({ onLogin, error, busy }: Props) {
 
   return (
     <div className="player-screen login-screen">
-      <h1>🗺️ Office Treasure Hunt</h1>
-      <p className="tagline">Crack the clues. Find the codes. Claim the treasure.</p>
-      <form onSubmit={handleSubmit} className="code-form">
-        <label htmlFor="team-code-input">Team code</label>
-        <input
-          id="team-code-input"
-          value={code}
-          onChange={e => setCode(e.target.value)}
-          placeholder="e.g. MANGO-77"
-          autoComplete="off"
-          autoCapitalize="characters"
-        />
-        <button type="submit" disabled={busy || !code.trim()}>Let's hunt!</button>
-      </form>
-      {error && <p className="msg msg-bad" role="alert">{error}</p>}
+      <div className="login-card">
+        <div className="brand-badge" aria-hidden="true"><ChestSprite className="sprite sprite-xl" /></div>
+        <h1>Welcome</h1>
+        <form onSubmit={handleSubmit} className="code-form">
+          <div className="float-field">
+            <input
+              id="team-code-input"
+              value={code}
+              onChange={e => setCode(e.target.value)}
+              placeholder="e.g. MANGO77"
+              autoComplete="off"
+              autoCapitalize="characters"
+            />
+            <label htmlFor="team-code-input">Enter your team code</label>
+            {/* Draws the outline with a gap the floated label sits in. */}
+            <fieldset aria-hidden="true"><legend><span>Enter your team code</span></legend></fieldset>
+          </div>
+          <button type="submit" disabled={busy || !code.trim()}>
+            {busy ? 'Checking…' : "Let's hunt!"}
+          </button>
+        </form>
+        {error && <p className="msg msg-bad" role="alert">{error}</p>}
+      </div>
     </div>
   )
 }

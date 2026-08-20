@@ -1,4 +1,4 @@
-import { anonClient, adminClient, serviceClient, resetDb, seedStations, createTeam, setRoute } from './helpers'
+import { anonClient, adminClient, serviceClient, resetDb, seedStations, createTeam } from './helpers'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 const service = serviceClient()
@@ -22,25 +22,9 @@ describe('game lifecycle RPCs', () => {
     expect(error).not.toBeNull()
   })
 
-  it('start_game validates setup completeness step by step', async () => {
-    expect(await rpc('start_game')).toEqual({ ok: false, error: 'no_final_station' })
-    const stations = await seedStations(service, 2)
-    expect(await rpc('start_game')).toEqual({ ok: false, error: 'no_teams' })
-    const team = await createTeam(service, 'T1', 'TEAM-11')
-    expect(await rpc('start_game')).toEqual({ ok: false, error: 'teams_missing_routes', teams: 1 })
-    await setRoute(service, team.id, stations.map(s => s.id))
-    expect(await rpc('start_game')).toEqual({ ok: true, status: 'live' })
-    const { data: game } = await service.from('game').select('*').single()
-    expect(game!.status).toBe('live')
-    expect(game!.started_at).not.toBeNull()
-    // cannot start twice
-    expect(await rpc('start_game')).toEqual({ ok: false, error: 'not_in_setup' })
-  })
-
   it('pause, resume and end follow the allowed transitions', async () => {
-    const stations = await seedStations(service, 1)
-    const team = await createTeam(service, 'T1', 'TEAM-11')
-    await setRoute(service, team.id, stations.map(s => s.id))
+    await seedStations(service, 1)
+    await createTeam(service, 'T1', 'TEAM-11')
 
     expect(await rpc('pause_game')).toEqual({ ok: false, error: 'not_live' })
     expect(await rpc('resume_game')).toEqual({ ok: false, error: 'not_paused' })
@@ -54,24 +38,67 @@ describe('game lifecycle RPCs', () => {
     expect(game!.ended_at).not.toBeNull()
     expect(await rpc('end_game')).toEqual({ ok: false, error: 'not_running' })
   })
+})
 
-  it('reset_progress clears progress but keeps teams, stations and routes', async () => {
-    const stations = await seedStations(service, 2)
-    const team = await createTeam(service, 'T1', 'TEAM-11')
-    await setRoute(service, team.id, stations.map(s => s.id))
-    await rpc('start_game')
-    await service.from('teams').update({ current_position: 3, finished_at: new Date().toISOString() }).eq('id', team.id)
-    await service.from('attempts').insert({ team_id: team.id, submitted_code: 'CODE-1', result: 'correct' })
+describe('start_game', () => {
+  beforeEach(() => resetDb(service))
 
-    expect(await rpc('reset_progress')).toEqual({ ok: true, status: 'setup' })
+  it('refuses with no stations', async () => {
+    const admin = await adminClient()
+    await createTeam(service, 'Team 1', 'ALPHA1')
+    expect(await admin.rpc('start_game').then(r => r.data)).toMatchObject({ ok: false, error: 'no_stations' })
+  })
 
-    const { data: teamAfter } = await service.from('teams').select('*').eq('id', team.id).single()
-    expect(teamAfter).toMatchObject({ current_position: 0, finished_at: null })
-    const { data: attempts } = await service.from('attempts').select('*')
-    expect(attempts).toEqual([])
-    const { data: stops } = await service.from('route_stops').select('*')
-    expect(stops).toHaveLength(3)
-    const { data: game } = await service.from('game').select('*').single()
-    expect(game).toMatchObject({ status: 'setup', started_at: null, ended_at: null })
+  it('refuses with no teams', async () => {
+    const admin = await adminClient()
+    await seedStations(service, 2)
+    expect(await admin.rpc('start_game').then(r => r.data)).toMatchObject({ ok: false, error: 'no_teams' })
+  })
+
+  it('refuses when levels are not contiguous from 1', async () => {
+    const admin = await adminClient()
+    await createTeam(service, 'Team 1', 'ALPHA1')
+    await service.from('stations').insert([
+      { name: 'A', clue_text: 'a', code: 'AAA1', sort_order: 1 },
+      { name: 'C', clue_text: 'c', code: 'CCC3', sort_order: 3 },
+    ])
+    expect(await admin.rpc('start_game').then(r => r.data)).toMatchObject({ ok: false, error: 'level_gap' })
+  })
+
+  it('starts with mismatched counts and snapshots the team count', async () => {
+    const admin = await adminClient()
+    await seedStations(service, 2)
+    await createTeam(service, 'Team 1', 'ALPHA1')
+    await createTeam(service, 'Team 2', 'BETA22')
+    await createTeam(service, 'Team 3', 'GAMMA3')
+
+    expect(await admin.rpc('start_game').then(r => r.data))
+      .toMatchObject({ ok: true, status: 'live', teams: 3, levels: 2 })
+    const { data } = await service.from('game').select('initial_team_count').single()
+    expect((data as { initial_team_count: number }).initial_team_count).toBe(3)
+  })
+})
+
+describe('reset_progress', () => {
+  beforeEach(() => resetDb(service))
+
+  it('clears statuses, cards and the team-count snapshot', async () => {
+    const admin = await adminClient()
+    await seedStations(service, 2)
+    const team = await createTeam(service, 'Team 1', 'ALPHA1')
+    await admin.rpc('start_game')
+    await service.from('card_opens').insert({ team_id: team.id, level: 1 })
+    await service.from('teams')
+      .update({ current_position: 2, status: 'winner', finished_at: new Date().toISOString() })
+      .eq('id', team.id)
+
+    expect(await admin.rpc('reset_progress').then(r => r.data)).toMatchObject({ ok: true, status: 'setup' })
+
+    const { data: rows } = await service.from('teams').select('current_position, status, finished_at, out_at_level')
+    expect(rows).toEqual([{ current_position: 0, status: 'playing', finished_at: null, out_at_level: null }])
+    const { data: opens } = await service.from('card_opens').select('*')
+    expect(opens).toEqual([])
+    const { data: game } = await service.from('game').select('initial_team_count').single()
+    expect((game as { initial_team_count: number | null }).initial_team_count).toBeNull()
   })
 })

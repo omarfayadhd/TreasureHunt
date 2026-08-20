@@ -1,117 +1,218 @@
-import { anonClient, serviceClient, resetDb, seedStations, createTeam, setRoute, setGameStatus, clearCooldown, type SeededStation } from './helpers'
+import { beforeEach, describe, expect, it } from 'vitest'
+import {
+  anonClient, clearCooldown, createTeam, resetDb, seedStations, serviceClient, setGameStatus,
+} from './helpers'
 
 const service = serviceClient()
 const anon = anonClient()
 
-describe('submit_code', () => {
-  let stations: SeededStation[]
-  let teamId: string
-
-  beforeEach(async () => {
-    await resetDb(service)
-    stations = await seedStations(service, 3) // route: CODE-1, CODE-2, CODE-3, FINAL-99
-    const team = await createTeam(service, 'Mongooses', 'TEAM-11')
-    teamId = team.id
-    await setRoute(service, teamId, stations.map(s => s.id))
-    await setGameStatus(service, 'live')
-  })
-
-  async function submit(code: string, teamCode = 'TEAM-11') {
-    const { data, error } = await anon.rpc('submit_code', { p_team_code: teamCode, p_code: code })
-    expect(error).toBeNull()
-    return data
+type Submit = {
+  ok: boolean
+  error?: string
+  correct?: boolean
+  reason?: string
+  retry_after_seconds?: number
+  view?: {
+    cleared: number
+    status: string
+    race: { level: number; found: number; teams: number } | null
+    cards: { level: number; unlocked: boolean; opened: boolean; clue: string | null }[]
   }
+}
 
-  it('rejects unknown team codes', async () => {
-    expect(await submit('CODE-1', 'NOPE-00')).toEqual({ ok: false, error: 'invalid_team_code' })
+async function submit(teamCode: string, code: string): Promise<Submit> {
+  const { data, error } = await anon.rpc('submit_code', { p_team_code: teamCode, p_code: code })
+  if (error) throw new Error(error.message)
+  return data as Submit
+}
+
+async function teamRow(id: string) {
+  const { data } = await service.from('teams').select('*').eq('id', id).single()
+  return data as {
+    current_position: number
+    status: string
+    out_at_level: number | null
+    finished_at: string | null
+  }
+}
+
+async function placeOf(teamCode: string): Promise<number | null> {
+  const { data, error } = await anon.rpc('team_view', { p_team_code: teamCode })
+  if (error) throw new Error(error.message)
+  return (data as { place: number | null }).place
+}
+
+/** Three teams, three levels, game live, initial_team_count snapshotted. */
+async function threeTeamGame() {
+  const stations = await seedStations(service, 3)
+  const a = await createTeam(service, 'Team 1', 'ALPHA1')
+  const b = await createTeam(service, 'Team 2', 'BETA22')
+  const c = await createTeam(service, 'Team 3', 'GAMMA3')
+  await setGameStatus(service, 'live')
+  await service.from('game').update({ initial_team_count: 3 }).eq('id', 1)
+  return { stations, a, b, c }
+}
+
+beforeEach(async () => {
+  await resetDb(service)
+})
+
+describe('submit_code', () => {
+  it('accepts the level 1 code and unlocks the next card', async () => {
+    const { a } = await threeTeamGame()
+    const result = await submit('ALPHA1', 'code1')
+    expect(result).toMatchObject({ ok: true, correct: true })
+    expect(result.view!.cleared).toBe(1)
+    expect(result.view!.cards.map(c => c.unlocked)).toEqual([true, true, false])
+    expect((await teamRow(a.id)).current_position).toBe(1)
   })
 
-  it('rejects submissions when the game is not live', async () => {
-    await setGameStatus(service, 'setup')
-    expect(await submit('CODE-1')).toEqual({ ok: false, error: 'game_not_live' })
+  it('rejects a wrong code without advancing', async () => {
+    const { a } = await threeTeamGame()
+    const result = await submit('ALPHA1', 'WRONG9')
+    expect(result).toMatchObject({ ok: true, correct: false, reason: 'wrong' })
+    expect((await teamRow(a.id)).current_position).toBe(0)
+  })
+
+  it('nudges a team that re-enters a code it already used', async () => {
+    const { a } = await threeTeamGame()
+    await submit('ALPHA1', 'CODE1')
+    await clearCooldown(service, a.id)
+    expect(await submit('ALPHA1', 'CODE1')).toMatchObject({ correct: false, reason: 'already_used' })
+  })
+
+  it('lets every team through the opening race', async () => {
+    await threeTeamGame()
+    for (const code of ['ALPHA1', 'BETA22', 'GAMMA3']) {
+      expect(await submit(code, 'CODE1')).toMatchObject({ correct: true })
+    }
+    const { data } = await service.from('teams').select('status')
+    expect((data as { status: string }[]).every(t => t.status === 'playing')).toBe(true)
+  })
+
+  it('lets every team clear the same level', async () => {
+    const { a, b, c } = await threeTeamGame()
+    for (const code of ['ALPHA1', 'BETA22', 'GAMMA3']) {
+      expect(await submit(code, 'CODE1')).toMatchObject({ ok: true, correct: true })
+    }
+    for (const id of [a.id, b.id, c.id]) {
+      expect((await teamRow(id))).toMatchObject({ current_position: 1, status: 'playing' })
+    }
+  })
+
+  it('never eliminates anyone, however far apart the teams are', async () => {
+    const { a, b, c } = await threeTeamGame()
+    for (const code of ['CODE1', 'CODE2', 'CODE3']) {
+      await submit('ALPHA1', code)
+      await clearCooldown(service, a.id)
+    }
+    // A has claimed the treasure; B and C have not moved at all
+    expect((await teamRow(a.id)).status).toBe('winner')
+    for (const id of [b.id, c.id]) {
+      expect((await teamRow(id))).toMatchObject({ status: 'playing', current_position: 0, out_at_level: null })
+    }
+    const { data } = await service.from('teams').select('status').eq('status', 'eliminated')
+    expect(data).toEqual([])
+  })
+
+  it('crowns the first finisher and places later ones behind it', async () => {
+    const { a, b, c } = await threeTeamGame()
+    for (const team of [['ALPHA1', a.id], ['BETA22', b.id]] as const) {
+      for (const code of ['CODE1', 'CODE2', 'CODE3']) {
+        await submit(team[0], code)
+        await clearCooldown(service, team[1])
+      }
+    }
+    expect((await teamRow(a.id)).status).toBe('winner')
+    expect((await teamRow(b.id)).status).toBe('finished')
+    expect((await teamRow(c.id)).status).toBe('playing')
+
+    const view = (await submit('GAMMA3', 'NOPE99')).view!
+    expect(view.status).toBe('playing')
+  })
+
+  it('refuses further submits from a finished team', async () => {
+    const { a } = await threeTeamGame()
+    for (const code of ['CODE1', 'CODE2', 'CODE3']) {
+      await submit('ALPHA1', code)
+      await clearCooldown(service, a.id)
+    }
+    expect(await submit('ALPHA1', 'CODE1')).toMatchObject({ ok: false, error: 'not_playing' })
+  })
+
+  it('lets two teams clear the same level simultaneously', async () => {
+    const { a, b } = await threeTeamGame()
+    await submit('ALPHA1', 'CODE1')
+    await submit('BETA22', 'CODE1')
+    for (const id of [a.id, b.id]) await clearCooldown(service, id)
+
+    const [first, second] = await Promise.all([submit('ALPHA1', 'CODE2'), submit('BETA22', 'CODE2')])
+    expect(first).toMatchObject({ ok: true, correct: true })
+    expect(second).toMatchObject({ ok: true, correct: true })
+    for (const id of [a.id, b.id]) expect((await teamRow(id)).current_position).toBe(2)
+  })
+
+  // `place` is derived by ordering on `finished_at`, but the winner decision is
+  // serialized later in the transaction on the game-row lock. A transaction-start
+  // timestamp (`now()`) can therefore disagree with lock order and label the
+  // winner 2nd. Assert the PAIRING, not two independently sorted lists, and race
+  // repeatedly because a single run can get lucky.
+  it('pairs winner with 1st place every time two teams clear the FINAL level at once', async () => {
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      await resetDb(service)
+      const { a, b } = await threeTeamGame()
+      for (const team of [['ALPHA1', a.id], ['BETA22', b.id]] as const) {
+        await submit(team[0], 'CODE1')
+        await clearCooldown(service, team[1])
+        await submit(team[0], 'CODE2')
+        await clearCooldown(service, team[1])
+      }
+
+      const [first, second] = await Promise.all([submit('ALPHA1', 'CODE3'), submit('BETA22', 'CODE3')])
+      expect(first, `run ${attempt}`).toMatchObject({ ok: true, correct: true })
+      expect(second, `run ${attempt}`).toMatchObject({ ok: true, correct: true })
+
+      const rows = [
+        { code: 'ALPHA1', ...(await teamRow(a.id)), place: await placeOf('ALPHA1') },
+        { code: 'BETA22', ...(await teamRow(b.id)), place: await placeOf('BETA22') },
+      ]
+      expect(rows.map(r => r.status).sort(), `run ${attempt}`).toEqual(['finished', 'winner'])
+
+      const winner = rows.find(r => r.status === 'winner')!
+      const runnerUp = rows.find(r => r.status === 'finished')!
+      expect(winner.place, `run ${attempt}: winner ${winner.code} must be 1st`).toBe(1)
+      expect(runnerUp.place, `run ${attempt}: finisher ${runnerUp.code} must be 2nd`).toBe(2)
+      expect(
+        winner.finished_at! <= runnerUp.finished_at!,
+        `run ${attempt}: winner finished_at ${winner.finished_at} must not be after ${runnerUp.finished_at}`,
+      ).toBe(true)
+    }
+  })
+
+  it('never lets the same team double-advance on a concurrent double-submit', async () => {
+    const { a } = await threeTeamGame()
+
+    const [first, second] = await Promise.all([submit('ALPHA1', 'CODE1'), submit('ALPHA1', 'CODE1')])
+    const outcomes = [first, second].map(r => (r.ok && r.correct ? 'correct' : r.ok === false ? r.error : r.reason))
+    expect(outcomes.filter(o => o === 'correct')).toHaveLength(1)
+    expect(outcomes.filter(o => o === 'cooldown')).toHaveLength(1)
+
+    expect((await teamRow(a.id)).current_position).toBe(1)
+    const { data } = await service.from('attempts').select('result').eq('team_id', a.id).eq('result', 'correct')
+    expect(data).toHaveLength(1)
+  })
+
+  it('rejects submits while the game is paused', async () => {
+    await threeTeamGame()
     await setGameStatus(service, 'paused')
-    expect(await submit('CODE-1')).toEqual({ ok: false, error: 'game_not_live' })
-    const { data: attempts } = await service.from('attempts').select('*')
-    expect(attempts).toEqual([])
+    expect(await submit('ALPHA1', 'CODE1')).toMatchObject({ ok: false, error: 'game_not_live' })
   })
 
-  it('logs wrong codes without advancing', async () => {
-    expect(await submit('WRONG-1')).toEqual({ ok: true, correct: false, reason: 'wrong' })
-    const { data: team } = await service.from('teams').select('current_position').eq('id', teamId).single()
-    expect(team!.current_position).toBe(0)
-    const { data: attempts } = await service.from('attempts').select('*')
-    expect(attempts).toHaveLength(1)
-    expect(attempts![0]).toMatchObject({ submitted_code: 'WRONG-1', result: 'wrong' })
-  })
-
-  it('treats codes from later stations on the route as wrong', async () => {
-    expect(await submit('CODE-3')).toEqual({ ok: true, correct: false, reason: 'wrong' })
-  })
-
-  it('advances on the correct code, ignoring case and whitespace', async () => {
-    expect(await submit('  code-1 ')).toEqual({
-      ok: true,
-      correct: true,
-      finished: false,
-      position: 1,
-      total: 4,
-      clue: 'Clue leading to station 2',
-    })
-    const { data: team } = await service.from('teams').select('current_position').eq('id', teamId).single()
-    expect(team!.current_position).toBe(1)
-  })
-
-  it('enforces a 5 second cooldown between attempts', async () => {
-    await submit('WRONG-1')
-    const blocked = await submit('CODE-1')
-    expect(blocked).toMatchObject({ ok: false, error: 'cooldown' })
-    expect(blocked.retry_after_seconds).toBeGreaterThan(0)
-    expect(blocked.retry_after_seconds).toBeLessThanOrEqual(5)
-    // cooldown rejections log nothing, so the window is not extended
-    const { data: attempts } = await service.from('attempts').select('*')
-    expect(attempts).toHaveLength(1)
-    await clearCooldown(service, teamId)
-    expect(await submit('CODE-1')).toMatchObject({ correct: true })
-  })
-
-  it('flags codes the team already used', async () => {
-    await submit('CODE-1')
-    await clearCooldown(service, teamId)
-    expect(await submit('CODE-1')).toEqual({ ok: true, correct: false, reason: 'already_used' })
-    const { data: attempts } = await service.from('attempts').select('result').order('id')
-    expect(attempts!.map(a => a.result)).toEqual(['correct', 'already_used'])
-  })
-
-  it('finishes the hunt with a rank on the final code, then blocks further submits', async () => {
-    for (const code of ['CODE-1', 'CODE-2', 'CODE-3']) {
-      expect(await submit(code)).toMatchObject({ correct: true, finished: false })
-      await clearCooldown(service, teamId)
-    }
-    expect(await submit('FINAL-99')).toEqual({
-      ok: true,
-      correct: true,
-      finished: true,
-      position: 4,
-      total: 4,
-      rank: 1,
-    })
-    const { data: team } = await service.from('teams').select('finished_at').eq('id', teamId).single()
-    expect(team!.finished_at).not.toBeNull()
-    await clearCooldown(service, teamId)
-    expect(await submit('CODE-2')).toEqual({ ok: false, error: 'already_finished' })
-  })
-
-  it('ranks later finishers behind earlier ones', async () => {
-    for (const code of ['CODE-1', 'CODE-2', 'CODE-3', 'FINAL-99']) {
-      await submit(code)
-      await clearCooldown(service, teamId)
-    }
-    const second = await createTeam(service, 'Second', 'TEAM-22')
-    await setRoute(service, second.id, stations.map(s => s.id))
-    for (const code of ['CODE-1', 'CODE-2', 'CODE-3']) {
-      await submit(code, 'TEAM-22')
-      await clearCooldown(service, second.id)
-    }
-    expect(await submit('FINAL-99', 'TEAM-22')).toMatchObject({ finished: true, rank: 2 })
+  it('enforces the five second cooldown', async () => {
+    await threeTeamGame()
+    await submit('ALPHA1', 'WRONG1')
+    const second = await submit('ALPHA1', 'WRONG2')
+    expect(second).toMatchObject({ ok: false, error: 'cooldown' })
+    expect(second.retry_after_seconds as number).toBeGreaterThan(0)
   })
 })

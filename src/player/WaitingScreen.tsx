@@ -26,7 +26,7 @@ export default function WaitingScreen({ status, teamName }: Props) {
 
   return (
     <div className="player-screen center-screen">
-      <div className="big-emoji">{copy.emoji}</div>
+      <div className="emoji-orb" aria-hidden="true">{copy.emoji}</div>
       <h1>{copy.title}</h1>
       <p>{copy.body}</p>
     </div>

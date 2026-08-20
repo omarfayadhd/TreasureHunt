@@ -5,23 +5,31 @@ import * as api from '../lib/api'
 import type { TeamView } from '../lib/api'
 
 vi.mock('../lib/api', () => ({
-  teamLogin: vi.fn(),
+  teamView: vi.fn(),
   submitCode: vi.fn(),
+  openCard: vi.fn(),
 }))
 
-const mockedLogin = vi.mocked(api.teamLogin)
+const mockedView = vi.mocked(api.teamView)
 const mockedSubmit = vi.mocked(api.submitCode)
+const mockedOpen = vi.mocked(api.openCard)
 
-function liveView(overrides: Partial<TeamView> = {}): TeamView {
+function view(overrides: Partial<TeamView> = {}): TeamView {
   return {
     ok: true,
-    team_name: 'Mongooses',
+    team_name: 'Team 1',
     game_status: 'live',
-    position: 1,
-    total: 5,
-    clue: 'Look under the big plant',
-    finished: false,
-    rank: null,
+    status: 'playing',
+    cleared: 1,
+    total: 3,
+    out_at_level: null,
+    place: null,
+    race: { level: 2, found: 1, teams: 3 },
+    cards: [
+      { level: 1, unlocked: true, opened: true, clue: 'Under the plant' },
+      { level: 2, unlocked: true, opened: false, clue: 'Behind the fridge' },
+      { level: 3, unlocked: false, opened: false, clue: null },
+    ],
     ...overrides,
   }
 }
@@ -31,97 +39,91 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-async function loginAs(view: TeamView) {
-  mockedLogin.mockResolvedValue(view)
+async function loginAs(v: TeamView) {
+  mockedView.mockResolvedValue(v)
   render(<PlayerApp />)
-  await userEvent.type(screen.getByLabelText(/team code/i), 'TIGER-42')
+  await userEvent.type(screen.getByLabelText(/team code/i), 'ALPHA1')
   await userEvent.click(screen.getByRole('button', { name: /let's hunt/i }))
 }
 
 describe('PlayerApp', () => {
-  it('logs a team in and shows their clue and progress', async () => {
-    await loginAs(liveView())
-    expect(await screen.findByText('Look under the big plant')).toBeInTheDocument()
-    expect(screen.getByText(/clue 2 of 5/i)).toBeInTheDocument()
-    expect(screen.getByText('Mongooses')).toBeInTheDocument()
-    expect(localStorage.getItem('treasure_team_code')).toBe('TIGER-42')
+  // Players are anonymous and get no postgres_changes events under
+  // deny-by-default RLS, so the poll is the whole refresh mechanism.
+  it('re-reads the view every five seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      mockedView.mockResolvedValue(view())
+      localStorage.setItem('treasure_team_code', 'ALPHA1')
+      render(<PlayerApp />)
+      await vi.waitFor(() => expect(mockedView).toHaveBeenCalled())
+      const initial = mockedView.mock.calls.length
+
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(mockedView.mock.calls.length).toBe(initial + 1)
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(mockedView.mock.calls.length).toBe(initial + 2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
-  it('shows an error for a bad team code', async () => {
-    mockedLogin.mockResolvedValue({ ok: false, error: 'invalid_team_code' })
-    render(<PlayerApp />)
-    await userEvent.type(screen.getByLabelText(/team code/i), 'NOPE-00')
-    await userEvent.click(screen.getByRole('button', { name: /let's hunt/i }))
-    expect(await screen.findByText(/doesn't match any team/i)).toBeInTheDocument()
-    expect(localStorage.getItem('treasure_team_code')).toBeNull()
+  it('flags the final level and coins the rest', async () => {
+    await loginAs(view())
+    const cards = document.querySelectorAll('.scratch-card')
+    expect(cards).toHaveLength(3)
+    expect(cards[2].classList.contains('is-final')).toBe(true)
+    expect(cards[2].querySelector('[data-sprite="lock"]')).toBeTruthy()
+    expect(cards[0].querySelector('[data-sprite="flag"]')).toBeNull()
+    expect(cards[1].querySelector('[data-sprite="coin"]')).toBeTruthy()
   })
 
-  it('restores a saved session', async () => {
-    localStorage.setItem('treasure_team_code', 'TIGER-42')
-    mockedLogin.mockResolvedValue(liveView())
-    render(<PlayerApp />)
-    expect(await screen.findByText('Look under the big plant')).toBeInTheDocument()
-    expect(mockedLogin).toHaveBeenCalledWith('TIGER-42')
+  it('shows one card per level with locked cards hidden', async () => {
+    await loginAs(view())
+    expect(await screen.findByText('Under the plant')).toBeInTheDocument()
+    expect(screen.getAllByText(/locked/i)).toHaveLength(1)
   })
 
-  it('shows the waiting screen before the hunt starts', async () => {
-    await loginAs(liveView({ game_status: 'setup', clue: null }))
-    expect(await screen.findByText(/hold tight, mongooses/i)).toBeInTheDocument()
-    expect(screen.getByText(/hasn't started yet/i)).toBeInTheDocument()
+  it('shows how many teams have found the code it is hunting', async () => {
+    await loginAs(view())
+    expect(await screen.findByText(/1 of 3 teams found this code/i)).toBeInTheDocument()
   })
 
-  it('shows the paused screen', async () => {
-    await loginAs(liveView({ game_status: 'paused', clue: null }))
-    expect(await screen.findByText(/the hunt is paused/i)).toBeInTheDocument()
+  it('reports a scratch to the server', async () => {
+    mockedOpen.mockResolvedValue({ ok: true, level: 2, clue: 'Behind the fridge', view: view() })
+    await loginAs(view())
+    await userEvent.click(await screen.findByRole('button', { name: /scratch to reveal/i }))
+    expect(mockedOpen).toHaveBeenCalledWith('ALPHA1', 2)
   })
 
-  it('rejects a wrong code with a message', async () => {
-    await loginAs(liveView())
-    mockedSubmit.mockResolvedValue({ ok: true, correct: false, reason: 'wrong' })
-    await userEvent.type(await screen.findByLabelText(/enter code/i), 'BAD-99')
+  it('submits a code and renders the returned view', async () => {
+    await loginAs(view())
+    mockedSubmit.mockResolvedValue({ ok: true, correct: true, view: view({ cleared: 2, race: { level: 3, found: 0, teams: 3 } }) })
+    await userEvent.type(screen.getByLabelText(/enter code/i), 'CODE2')
     await userEvent.click(screen.getByRole('button', { name: /submit code/i }))
-    expect(await screen.findByText(/not the right code/i)).toBeInTheDocument()
+    expect(await screen.findByText(/code cracked/i)).toBeInTheDocument()
   })
 
-  it('nudges when a code was already used', async () => {
-    await loginAs(liveView())
-    mockedSubmit.mockResolvedValue({ ok: true, correct: false, reason: 'already_used' })
-    await userEvent.type(await screen.findByLabelText(/enter code/i), 'OLD-11')
+  it('puts the ghost on the wrong-code message', async () => {
+    await loginAs(view())
+    mockedSubmit.mockResolvedValue({ ok: true, correct: false, reason: 'wrong', view: view() })
+    await userEvent.type(screen.getByLabelText(/enter code/i), 'NOPE99')
     await userEvent.click(screen.getByRole('button', { name: /submit code/i }))
-    expect(await screen.findByText(/already used that code/i)).toBeInTheDocument()
+    const message = await screen.findByText(/wrong code/i)
+    expect(message.querySelector('[data-sprite="ghost"]')).toBeTruthy()
   })
 
-  it('advances to the next clue on a correct code', async () => {
-    await loginAs(liveView())
-    mockedSubmit.mockResolvedValue({
-      ok: true, correct: true, finished: false, position: 2, total: 5, clue: 'Check the coffee machine',
-    })
-    await userEvent.type(await screen.findByLabelText(/enter code/i), 'TIGER-42')
-    await userEvent.click(screen.getByRole('button', { name: /submit code/i }))
-    expect(await screen.findByText('Check the coffee machine')).toBeInTheDocument()
-    expect(screen.getByText(/clue 3 of 5/i)).toBeInTheDocument()
+  it('shows the winner screen for the first finisher', async () => {
+    await loginAs(view({ status: 'winner', cleared: 3, race: null, place: 1 }))
+    expect(await screen.findByText(/treasure found/i)).toBeInTheDocument()
   })
 
-  it('shows a cooldown countdown and disables submit', async () => {
-    await loginAs(liveView())
-    mockedSubmit.mockResolvedValue({ ok: false, error: 'cooldown', retry_after_seconds: 4 })
-    await userEvent.type(await screen.findByLabelText(/enter code/i), 'TIGER-42')
-    await userEvent.click(screen.getByRole('button', { name: /submit code/i }))
-    expect(await screen.findByText(/slow down/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /wait/i })).toBeDisabled()
+  it('shows the placing for a later finisher', async () => {
+    await loginAs(view({ status: 'finished', cleared: 3, race: null, place: 2 }))
+    expect(await screen.findByText(/2nd/i)).toBeInTheDocument()
   })
 
-  it('celebrates the treasure with a rank', async () => {
-    await loginAs(liveView())
-    mockedSubmit.mockResolvedValue({ ok: true, correct: true, finished: true, position: 5, total: 5, rank: 2 })
-    await userEvent.type(await screen.findByLabelText(/enter code/i), 'GOLD-01')
-    await userEvent.click(screen.getByRole('button', { name: /submit code/i }))
-    expect(await screen.findByText(/treasure found!/i)).toBeInTheDocument()
-    expect(screen.getByText(/finished 2nd/i)).toBeInTheDocument()
-  })
-
-  it('shows the ended screen when the hunt is over', async () => {
-    await loginAs(liveView({ game_status: 'ended', clue: null }))
-    expect(await screen.findByText(/the hunt is over/i)).toBeInTheDocument()
+  it('waits for kickoff when the game is in setup', async () => {
+    await loginAs(view({ game_status: 'setup', race: null }))
+    expect(await screen.findByText(/hasn't started/i)).toBeInTheDocument()
   })
 })

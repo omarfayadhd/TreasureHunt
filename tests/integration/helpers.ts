@@ -45,36 +45,27 @@ function must<T extends { error: { message: string } | null }>(res: T): T {
 
 export async function resetDb(service: SupabaseClient = serviceClient()): Promise<void> {
   must(await service.from('attempts').delete().gte('id', 0))
-  must(await service.from('route_stops').delete().gte('position', 0))
+  must(await service.from('card_opens').delete().gte('level', 0))
   must(await service.from('teams').delete().gte('created_at', '1970-01-01'))
   must(await service.from('stations').delete().gte('created_at', '1970-01-01'))
-  must(await service.from('game').update({ status: 'setup', started_at: null, ended_at: null }).eq('id', 1))
+  must(
+    await service
+      .from('game')
+      .update({ status: 'setup', started_at: null, ended_at: null, initial_team_count: null })
+      .eq('id', 1),
+  )
 }
 
-export type SeededStation = {
-  id: string
-  name: string
-  clue_text: string
-  code: string
-  is_final: boolean
-  sort_order: number
-}
+export type SeededStation = { id: string; name: string; clue_text: string; code: string; sort_order: number }
 
-export async function seedStations(service: SupabaseClient, regular: number): Promise<SeededStation[]> {
-  const rows = Array.from({ length: regular }, (_, i) => ({
+/** Creates `levels` stations on levels 1..levels with codes CODE1..CODEn. */
+export async function seedStations(service: SupabaseClient, levels: number): Promise<SeededStation[]> {
+  const rows = Array.from({ length: levels }, (_, i) => ({
     name: `Station ${i + 1}`,
     clue_text: `Clue leading to station ${i + 1}`,
-    code: `CODE-${i + 1}`,
-    is_final: false,
+    code: `CODE${i + 1}`,
     sort_order: i + 1,
   }))
-  rows.push({
-    name: 'Treasure',
-    clue_text: 'Clue leading to the treasure',
-    code: 'FINAL-99',
-    is_final: true,
-    sort_order: regular + 1,
-  })
   const { data, error } = await service.from('stations').insert(rows).select()
   if (error) throw new Error(error.message)
   return (data as SeededStation[]).sort((a, b) => a.sort_order - b.sort_order)
@@ -83,12 +74,14 @@ export async function seedStations(service: SupabaseClient, regular: number): Pr
 export async function createTeam(service: SupabaseClient, name: string, code: string) {
   const { data, error } = await service.from('teams').insert({ name, team_code: code }).select().single()
   if (error) throw new Error(error.message)
-  return data as { id: string; name: string; team_code: string; current_position: number }
-}
-
-export async function setRoute(service: SupabaseClient, teamId: string, stationIds: string[]): Promise<void> {
-  const rows = stationIds.map((sid, i) => ({ team_id: teamId, position: i + 1, station_id: sid }))
-  must(await service.from('route_stops').insert(rows))
+  return data as {
+    id: string
+    name: string
+    team_code: string
+    current_position: number
+    status: string
+    out_at_level: number | null
+  }
 }
 
 export async function setGameStatus(service: SupabaseClient, status: string): Promise<void> {

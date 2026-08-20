@@ -6,16 +6,14 @@ import * as adminApi from './adminApi'
 
 vi.mock('./adminApi', () => ({
   fetchGame: vi.fn(),
-  fetchRoutePreview: vi.fn(),
   startGame: vi.fn(),
   pauseGame: vi.fn(),
   resumeGame: vi.fn(),
   endGame: vi.fn(),
   resetProgress: vi.fn(),
-  generateRoutes: vi.fn(),
 }))
 
-const setupGame = { id: 1, status: 'setup' as const, started_at: null, ended_at: null }
+const setupGame = { id: 1, status: 'setup' as const, started_at: null, ended_at: null, initial_team_count: null }
 
 function renderPanel() {
   return render(
@@ -28,16 +26,45 @@ function renderPanel() {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(adminApi.fetchGame).mockResolvedValue(setupGame)
-  vi.mocked(adminApi.fetchRoutePreview).mockResolvedValue([])
 })
 
 describe('GameControl', () => {
   it('offers Start in setup and surfaces validation errors', async () => {
-    vi.mocked(adminApi.startGame).mockResolvedValue({ ok: false, error: 'teams_missing_routes', teams: 2 })
+    vi.mocked(adminApi.startGame).mockResolvedValue({ ok: false, error: 'no_teams' })
     renderPanel()
     const startButton = await screen.findByRole('button', { name: /start hunt/i })
     await userEvent.click(startButton)
-    expect(await screen.findByText(/teams_missing_routes/i)).toBeInTheDocument()
+    expect(await screen.findByText(/add teams before starting/i)).toBeInTheDocument()
+  })
+
+  it('explains a level gap in plain language', async () => {
+    vi.mocked(adminApi.startGame).mockResolvedValue({ ok: false, error: 'level_gap' })
+    renderPanel()
+    await userEvent.click(await screen.findByRole('button', { name: /start/i }))
+    expect(await screen.findByText(/levels must run 1, 2, 3/i)).toBeInTheDocument()
+  })
+
+  it('reports the shape of the game it just started', async () => {
+    vi.mocked(adminApi.startGame).mockResolvedValue({ ok: true, status: 'live', teams: 4, levels: 4 })
+    renderPanel()
+    await userEvent.click(await screen.findByRole('button', { name: /start/i }))
+    expect(await screen.findByText(/4 teams · 4 clues/i)).toBeInTheDocument()
+  })
+
+  it('explains a double-click on Start instead of showing not_in_setup', async () => {
+    vi.mocked(adminApi.startGame).mockResolvedValue({ ok: false, error: 'not_in_setup' })
+    renderPanel()
+    await userEvent.click(await screen.findByRole('button', { name: /start hunt/i }))
+    expect(await screen.findByText(/hunt has already started/i)).toBeInTheDocument()
+    expect(screen.queryByText(/not_in_setup/)).not.toBeInTheDocument()
+  })
+
+  it('explains the other stale-tab lifecycle refusals in plain language', async () => {
+    vi.mocked(adminApi.fetchGame).mockResolvedValue({ ...setupGame, status: 'live' })
+    vi.mocked(adminApi.pauseGame).mockResolvedValue({ ok: false, error: 'not_live' })
+    renderPanel()
+    await userEvent.click(await screen.findByRole('button', { name: /pause/i }))
+    expect(await screen.findByText(/nothing to pause/i)).toBeInTheDocument()
   })
 
   it('offers Pause and End while live', async () => {
@@ -46,22 +73,6 @@ describe('GameControl', () => {
     expect(await screen.findByRole('button', { name: /pause/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /end hunt/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /start hunt/i })).not.toBeInTheDocument()
-  })
-
-  it('shows the route preview', async () => {
-    vi.mocked(adminApi.fetchRoutePreview).mockResolvedValue([
-      { team: 'Mongooses', stops: ['Kitchen', 'Lobby', 'Treasure'] },
-    ])
-    renderPanel()
-    expect(await screen.findByText('Mongooses')).toBeInTheDocument()
-    expect(screen.getByText('Kitchen → Lobby → Treasure')).toBeInTheDocument()
-  })
-
-  it('generates routes on demand', async () => {
-    vi.mocked(adminApi.generateRoutes).mockResolvedValue({ ok: true, teams_routed: 3 })
-    renderPanel()
-    await userEvent.click(await screen.findByRole('button', { name: /generate routes/i }))
-    await waitFor(() => expect(adminApi.generateRoutes).toHaveBeenCalled())
   })
 
   it('requires typing RESET before resetting', async () => {

@@ -1,21 +1,48 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import {
-  createStation, deleteStation, fetchGame, fetchStations, makeFinal, swapOrder, updateStation,
-  type StationRow,
+  createStation, deleteStation, fetchGame, fetchStations, refusal, suggestStationCode, swapOrder,
+  updateStation, type StationRow,
 } from './adminApi'
-import { generateCode } from '../lib/codes'
 
 type Draft = { name: string; clue_text: string; code: string }
+
+const CODE = /^[A-Z0-9]{3,12}$/
+const RUNNING_HINT = 'The level ladder is locked while the hunt is running'
+
+function normalizeCode(raw: string): string {
+  return raw.trim().toUpperCase()
+}
+
+function refusalMessage(error: string): string {
+  switch (error) {
+    case 'game_running':
+      return 'The hunt is running — end it or reset progress before changing the level ladder.'
+    case 'not_found':
+      return 'That station is no longer there — the list has been refreshed.'
+    default:
+      return `Error: ${error}`
+  }
+}
 
 export default function StationsPanel() {
   const [stations, setStations] = useState<StationRow[]>([])
   const [gameRunning, setGameRunning] = useState(false)
   const [name, setName] = useState('')
   const [clue, setClue] = useState('')
-  const [code, setCode] = useState(() => generateCode())
+  const [code, setCode] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft>({ name: '', clue_text: '', code: '' })
   const [error, setError] = useState<string | null>(null)
+
+  // Station codes are minted server-side from the same collision-checked pool as
+  // team codes, so the suggestion is fetched rather than generated in the browser.
+  const suggestCode = useCallback(async () => {
+    try {
+      setCode(await suggestStationCode())
+    } catch {
+      setCode('')
+    }
+  }, [])
 
   const load = useCallback(async () => {
     const [stationRows, game] = await Promise.all([fetchStations(), fetchGame()])
@@ -25,12 +52,14 @@ export default function StationsPanel() {
 
   useEffect(() => {
     load().catch(e => setError(e instanceof Error ? e.message : String(e)))
-  }, [load])
+    void suggestCode()
+  }, [load, suggestCode])
 
   async function run(action: () => Promise<unknown>) {
     setError(null)
     try {
-      await action()
+      const refused = refusal(await action())
+      if (refused) setError(refusalMessage(refused))
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -39,19 +68,26 @@ export default function StationsPanel() {
 
   function handleCreate(event: FormEvent) {
     event.preventDefault()
+    if (gameRunning) return
     if (!name.trim() || !clue.trim() || !code.trim()) return
+    const normalizedCode = normalizeCode(code)
+    if (!CODE.test(normalizedCode)) {
+      setError('Codes are letters and numbers only, 3–12 characters.')
+      return
+    }
+    setError(null)
     const nextOrder = stations.length ? Math.max(...stations.map(s => s.sort_order)) + 1 : 1
     run(() =>
       createStation({
         name: name.trim(),
         clue_text: clue.trim(),
-        code: code.trim().toUpperCase(),
+        code: normalizedCode,
         sort_order: nextOrder,
       }),
     )
     setName('')
     setClue('')
-    setCode(generateCode())
+    void suggestCode()
   }
 
   function startEdit(station: StationRow) {
@@ -60,41 +96,62 @@ export default function StationsPanel() {
   }
 
   function saveEdit(id: string) {
+    if (gameRunning) return
+    const normalizedCode = normalizeCode(draft.code)
+    if (!CODE.test(normalizedCode)) {
+      setError('Codes are letters and numbers only, 3–12 characters.')
+      return
+    }
+    setError(null)
     run(() =>
       updateStation(id, {
         name: draft.name.trim(),
         clue_text: draft.clue_text.trim(),
-        code: draft.code.trim().toUpperCase(),
+        code: normalizedCode,
       }),
     )
     setEditingId(null)
   }
 
+  const levels = stations.map(s => s.sort_order)
+  const minLevel = levels.length ? Math.min(...levels) : 1
+  const maxLevel = levels.length ? Math.max(...levels) : 0
+  const hasGap = stations.length > 0 && (minLevel !== 1 || maxLevel !== stations.length)
+
   return (
     <section className="card">
       <h2>Stations</h2>
       {gameRunning && (
-        <p className="msg msg-warn">The hunt is live — editing stations now can confuse teams mid-route.</p>
+        <p className="msg msg-warn">
+          The hunt is live — the level ladder is locked. Adding a level would move the finish line
+          mid-game, and editing a code would turn a posted paper code into a wrong answer. End the
+          hunt or reset progress first.
+        </p>
+      )}
+      {hasGap && (
+        <p className="msg msg-warn">Levels must run 1 to {stations.length} with no gaps.</p>
       )}
       <form onSubmit={handleCreate} className="inline-form">
         <div>
           <label htmlFor="station-name">Station name</label>
-          <input id="station-name" value={name} onChange={e => setName(e.target.value)} placeholder="Kitchen fridge" />
+          <input id="station-name" value={name} disabled={gameRunning} onChange={e => setName(e.target.value)} placeholder="Kitchen fridge" />
         </div>
         <div>
           <label htmlFor="station-clue">Clue leading here</label>
-          <input id="station-clue" value={clue} onChange={e => setClue(e.target.value)} placeholder="Where lunches chill…" />
+          <input id="station-clue" value={clue} disabled={gameRunning} onChange={e => setClue(e.target.value)} placeholder="Where lunches chill…" />
         </div>
         <div>
           <label htmlFor="station-code">Code</label>
-          <input id="station-code" value={code} onChange={e => setCode(e.target.value)} />
+          <input id="station-code" value={code} disabled={gameRunning} onChange={e => setCode(e.target.value)} />
         </div>
-        <button type="submit">Add station</button>
+        <button type="submit" disabled={gameRunning} title={gameRunning ? RUNNING_HINT : undefined}>
+          Add station
+        </button>
       </form>
       {error && <p className="msg msg-bad" role="alert">{error}</p>}
       <table className="board-table">
         <thead>
-          <tr><th>Order</th><th>Station</th><th>Clue</th><th>Code</th><th>Final?</th><th>Actions</th></tr>
+          <tr><th>Level</th><th>Station</th><th>Clue</th><th>Code</th><th>Actions</th></tr>
         </thead>
         <tbody>
           {stations.map((station, index) => (
@@ -103,14 +160,16 @@ export default function StationsPanel() {
                 {station.sort_order}{' '}
                 <button
                   className="link-btn"
-                  disabled={index === 0}
+                  disabled={index === 0 || gameRunning}
+                  title={gameRunning ? RUNNING_HINT : undefined}
                   onClick={() => run(() => swapOrder(station, stations[index - 1]))}
                 >
                   ↑
                 </button>
                 <button
                   className="link-btn"
-                  disabled={index === stations.length - 1}
+                  disabled={index === stations.length - 1 || gameRunning}
+                  title={gameRunning ? RUNNING_HINT : undefined}
                   onClick={() => run(() => swapOrder(station, stations[index + 1]))}
                 >
                   ↓
@@ -121,7 +180,6 @@ export default function StationsPanel() {
                   <td><input aria-label="Edit name" value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} /></td>
                   <td><input aria-label="Edit clue" value={draft.clue_text} onChange={e => setDraft({ ...draft, clue_text: e.target.value })} /></td>
                   <td><input aria-label="Edit code" value={draft.code} onChange={e => setDraft({ ...draft, code: e.target.value })} /></td>
-                  <td>{station.is_final ? '🏆 Final' : ''}</td>
                   <td>
                     <button onClick={() => saveEdit(station.id)}>Save</button>{' '}
                     <button className="link-btn" onClick={() => setEditingId(null)}>Cancel</button>
@@ -133,24 +191,20 @@ export default function StationsPanel() {
                   <td>{station.clue_text}</td>
                   <td><code>{station.code}</code></td>
                   <td>
-                    <label style={{ display: 'inline', fontWeight: 400 }}>
-                      <input
-                        type="radio"
-                        name="final-station"
-                        checked={station.is_final}
-                        onChange={() => run(() => makeFinal(station.id))}
-                      />{' '}
-                      {station.is_final ? '🏆 Final' : 'Set final'}
-                    </label>
-                  </td>
-                  <td>
-                    <button className="link-btn" onClick={() => startEdit(station)}>Edit</button>
+                    <button
+                      className="link-btn"
+                      disabled={gameRunning}
+                      title={gameRunning ? RUNNING_HINT : undefined}
+                      onClick={() => startEdit(station)}
+                    >
+                      Edit
+                    </button>
                     <button
                       className="danger"
                       disabled={gameRunning}
-                      title="Stations can't be deleted while the hunt is running"
+                      title={RUNNING_HINT}
                       onClick={() => {
-                        if (confirm(`Delete station "${station.name}"? Team routes that include it must be regenerated.`)) {
+                        if (confirm(`Delete station "${station.name}"? This changes the shared level ladder for every team.`)) {
                           run(() => deleteStation(station.id))
                         }
                       }}
