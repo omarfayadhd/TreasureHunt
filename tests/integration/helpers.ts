@@ -46,6 +46,7 @@ function must<T extends { error: { message: string } | null }>(res: T): T {
 export async function resetDb(service: SupabaseClient = serviceClient()): Promise<void> {
   must(await service.from('attempts').delete().gte('id', 0))
   must(await service.from('card_opens').delete().gte('level', 0))
+  must(await service.from('team_stations').delete().gte('level', 0))
   must(await service.from('teams').delete().gte('created_at', '1970-01-01'))
   must(await service.from('stations').delete().gte('created_at', '1970-01-01'))
   must(
@@ -56,19 +57,28 @@ export async function resetDb(service: SupabaseClient = serviceClient()): Promis
   )
 }
 
-export type SeededStation = { id: string; name: string; clue_text: string; code: string; sort_order: number }
+export type SeededStation = { id: string; name: string; clue_text: string; sort_order: number }
 
-/** Creates `levels` stations on levels 1..levels with codes CODE1..CODEn. */
-export async function seedStations(service: SupabaseClient, levels: number): Promise<SeededStation[]> {
-  const rows = Array.from({ length: levels }, (_, i) => ({
+/** Creates `count` locations. Locations no longer carry codes or levels. */
+export async function seedStations(service: SupabaseClient, count: number): Promise<SeededStation[]> {
+  const rows = Array.from({ length: count }, (_, i) => ({
     name: `Station ${i + 1}`,
     clue_text: `Clue leading to station ${i + 1}`,
-    code: `CODE${i + 1}`,
     sort_order: i + 1,
   }))
   const { data, error } = await service.from('stations').insert(rows).select()
   if (error) throw new Error(error.message)
   return (data as SeededStation[]).sort((a, b) => a.sort_order - b.sort_order)
+}
+
+export async function setRoute(
+  service: SupabaseClient,
+  teamId: string,
+  cells: { level: number; stationId: string; code: string }[],
+): Promise<void> {
+  const rows = cells.map(c => ({ team_id: teamId, level: c.level, station_id: c.stationId, code: c.code }))
+  const { error } = await service.from('team_stations').insert(rows)
+  if (error) throw new Error(error.message)
 }
 
 export async function createTeam(service: SupabaseClient, name: string, code: string) {
