@@ -104,6 +104,47 @@ describe('generate_teams', () => {
       .toMatchObject({ ok: false, error: 'game_live' })
   })
 
+  it('refuses while the game is paused', async () => {
+    const admin = await adminClient()
+    await setGameStatus(service, 'paused')
+    expect(await admin.rpc('generate_teams', { p_count: 3 }).then(r => r.data))
+      .toMatchObject({ ok: false, error: 'game_live' })
+  })
+
+  it('skips names already taken instead of colliding on teams_name_key', async () => {
+    const admin = await adminClient()
+    await createTeam(service, 'Team 1', 'ALPHA1')
+    await createTeam(service, 'Team 3', 'GAMMA3')
+
+    const { data, error } = await admin.rpc('generate_teams', { p_count: 3 })
+    expect(error).toBeNull()
+    expect(data).toMatchObject({ ok: true, created: 1, total: 3 })
+
+    const { data: teams } = await service.from('teams').select('name').order('name')
+    expect((teams as { name: string }[]).map(t => t.name)).toEqual(['Team 1', 'Team 2', 'Team 3'])
+  })
+
+  it('keeps skipping past a whole run of gaps', async () => {
+    const admin = await adminClient()
+    await createTeam(service, 'Team 2', 'BETA22')
+    await createTeam(service, 'Team 4', 'DELTA4')
+
+    expect(await admin.rpc('generate_teams', { p_count: 5 }).then(r => r.data))
+      .toMatchObject({ ok: true, created: 3, total: 5 })
+    const { data: teams } = await service.from('teams').select('name').order('name')
+    expect((teams as { name: string }[]).map(t => t.name).sort())
+      .toEqual(['Team 1', 'Team 2', 'Team 3', 'Team 4', 'Team 5'])
+  })
+
+  it('creates codes that are unique across a full generate', async () => {
+    const admin = await adminClient()
+    await admin.rpc('generate_teams', { p_count: 20 })
+    const { data: teams } = await service.from('teams').select('team_code')
+    const codes = (teams as { team_code: string }[]).map(t => t.team_code)
+    expect(new Set(codes).size).toBe(20)
+    for (const code of codes) expect(code).toMatch(/^[A-HJ-NP-Z2-9]{6}$/)
+  })
+
   it('rejects a nonsense count', async () => {
     const admin = await adminClient()
     expect(await admin.rpc('generate_teams', { p_count: 0 }).then(r => r.data))
