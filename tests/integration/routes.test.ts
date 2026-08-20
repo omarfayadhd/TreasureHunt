@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { createTeam, resetDb, seedStations, serviceClient } from './helpers'
+import { createTeam, resetDb, seedStations, serviceClient, setRoute } from './helpers'
 
 const service = serviceClient()
 beforeEach(async () => { await resetDb(service) })
@@ -75,5 +75,98 @@ describe('route seeding helper', () => {
     }
 
     expect(new Set(rows.map(r => r.code)).size).toBe(16)
+  })
+
+  it('completes a partial seed around a hand-authored route without touching it', async () => {
+    const [k, r, m] = await seedStations(service, 3)
+    const owls = await createTeam(service, 'Owls', 'OWLS11')
+    const mongooses = await createTeam(service, 'Mongooses', 'MONG22')
+    await setRoute(service, owls.id, [
+      { level: 1, stationId: k.id, code: 'KITCH1' },
+      { level: 2, stationId: r.id, code: 'RECEP2' },
+      { level: 3, stationId: m.id, code: 'MEET33' },
+    ])
+    const before = (await service.from('team_stations').select('*').eq('team_id', owls.id).order('level')).data
+
+    const { data, error } = await service.rpc('seed_missing_routes')
+    expect(error).toBeNull()
+    expect(data).toMatchObject({ ok: true })
+
+    const after = (await service.from('team_stations').select('*').eq('team_id', owls.id).order('level')).data
+    expect(after).toEqual(before)
+
+    const mongooseRows = (
+      await service.from('team_stations').select('level, station_id').eq('team_id', mongooses.id)
+    ).data as { level: number; station_id: string }[]
+    expect(mongooseRows).toHaveLength(3)
+    expect(mongooseRows.map(r => r.level).sort()).toEqual([1, 2, 3])
+
+    const owlRows = after as { level: number; station_id: string }[]
+    for (const level of [1, 2, 3]) {
+      const owl = owlRows.find(r => r.level === level)?.station_id
+      const mongoose = mongooseRows.find(r => r.level === level)?.station_id
+      expect(mongoose).not.toBe(owl)
+    }
+  })
+
+  it('matches the length of a shorter existing route rather than using every location', async () => {
+    const stations = await seedStations(service, 4)
+    const a = await createTeam(service, 'Team 1', 'ALPHA1')
+    const b = await createTeam(service, 'Team 2', 'BETA22')
+    await setRoute(service, a.id, [
+      { level: 1, stationId: stations[0].id, code: 'AAAA11' },
+      { level: 2, stationId: stations[1].id, code: 'AAAA22' },
+    ])
+
+    const { data, error } = await service.rpc('seed_missing_routes')
+    expect(error).toBeNull()
+    expect(data).toMatchObject({ ok: true })
+
+    const bRows = (await service.from('team_stations').select('level').eq('team_id', b.id)).data as { level: number }[]
+    expect(bRows.map(r => r.level).sort()).toEqual([1, 2])
+  })
+
+  it('refuses to seed when existing teams have uneven route lengths', async () => {
+    const stations = await seedStations(service, 4)
+    const a = await createTeam(service, 'Team 1', 'ALPHA1')
+    const b = await createTeam(service, 'Team 2', 'BETA22')
+    const c = await createTeam(service, 'Team 3', 'GAMMA3')
+    await setRoute(service, a.id, [
+      { level: 1, stationId: stations[0].id, code: 'AAAA11' },
+      { level: 2, stationId: stations[1].id, code: 'AAAA22' },
+    ])
+    await setRoute(service, b.id, [
+      { level: 1, stationId: stations[2].id, code: 'BBBB11' },
+      { level: 2, stationId: stations[3].id, code: 'BBBB22' },
+      { level: 3, stationId: stations[0].id, code: 'BBBB33' },
+    ])
+
+    const { data, error } = await service.rpc('seed_missing_routes')
+    expect(error).toBeNull()
+    expect(data).toMatchObject({ ok: false, error: 'existing_routes_uneven' })
+
+    const cRows = (await service.from('team_stations').select('*').eq('team_id', c.id)).data
+    expect(cRows).toEqual([])
+  })
+
+  it('fails gracefully instead of throwing when no valid rotation exists', async () => {
+    const stations = await seedStations(service, 3)
+    const [s1, s2, s3] = stations
+    const a = await createTeam(service, 'Team 1', 'ALPHA1')
+    await createTeam(service, 'Team 2', 'BETA22')
+    // A's route is a transposition (swap 1st/2nd, fix 3rd) that leaves no valid
+    // derangement reachable by a level-by-level greedy scan for the other team.
+    await setRoute(service, a.id, [
+      { level: 1, stationId: s2.id, code: 'AAAA11' },
+      { level: 2, stationId: s1.id, code: 'AAAA22' },
+      { level: 3, stationId: s3.id, code: 'AAAA33' },
+    ])
+
+    const { data, error } = await service.rpc('seed_missing_routes')
+    expect(error).toBeNull()
+    expect(data).toMatchObject({ ok: false, error: 'no_valid_rotation' })
+
+    const { data: rows } = await service.from('team_stations').select('*')
+    expect(rows).toHaveLength(3)
   })
 })
