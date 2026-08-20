@@ -4,7 +4,7 @@
 
 **Goal:** Give every team its own route through a shared pool of locations, with its own code at each stop, so teams never occupy the same place at the same level and a code stolen from another team is worthless.
 
-**Architecture:** One new table, `team_stations(team_id, level, station_id, code)`, carries the whole feature; its four unique constraints encode the rules so an invalid rotation cannot be saved even if the UI is bypassed. `stations` demotes to a plain location (name, clue, display order). The three player RPCs are rewritten to read the caller's own route instead of a shared ladder, and a new Routes grid becomes the centre of admin setup.
+**Architecture:** One new table, `team_stations(team_id, level, station_id, code)`, carries the whole feature; its four unique constraints encode the rules so an invalid rotation cannot be saved even if the UI is bypassed. `stations` demotes to a plain location (name, clue, display order). The three player RPCs are rewritten to read the caller's own route instead of a shared ladder, and the admin station setup page gains a teams x levels route grid beneath its locations list — no new page, no new nav entry.
 
 **Tech Stack:** Postgres 15 (Supabase), plpgsql, React 18 + TypeScript, Vite, React Router 6, Vitest + Testing Library (unit) and Vitest + supabase-js against a local Supabase stack (integration), plain CSS.
 
