@@ -1,20 +1,28 @@
-# Elimination rounds, scratch cards, arcade skin — design
+# Race to the treasure, scratch cards, arcade skin — design
 
-Date: 2026-08-20
-Status: approved, ready for planning
-Supersedes the race-to-finish flow in `2026-08-17-treasure-hunt-design.md`
+Date: 2026-08-20 (revision 2 — elimination removed)
+Status: approved, in implementation
+Supersedes the race-to-finish flow in `2026-08-17-treasure-hunt-design.md`.
+The filename keeps the word "elimination" for link stability; revision 2 has
+none.
 
 ## Purpose
 
 Three changes, one release:
 
-1. **Elimination rounds.** All teams chase the same ladder of clues. Every race
-   after the first has one fewer slot than there are teams left, so the team
-   that misses the last slot is out. The game ends on a last team standing.
+1. **A straight race.** All teams chase the same ladder of clues. Every level
+   has a code for every team, so nobody is ever blocked or knocked out. The
+   first team to claim the treasure wins; the rest keep playing for a placing.
 2. **Scratch cards.** Players get a Paytm-style grid of foil cards instead of
-   one clue at a time, plus a live anonymous count of slots left in the race.
+   one clue at a time, plus a live anonymous count of how many teams have
+   already found the code they are hunting.
 3. **Arcade skin.** The whole app is reskinned as an 8-bit arcade game —
    Pac-Man neon on black, pixel chrome, hard-edged everything.
+
+**Revision 2 note.** An earlier revision of this spec eliminated the slowest
+team each round (slots = alive - 1). That is removed: there are no slots, no
+sweep, and no eliminated state. What survives from it is the shared ladder, the
+scratch cards, the live rival counter, and the admin monitor.
 
 Plus one admin addition: set the number of teams as a count and have them
 generated, so a 3-team game is as easy to run as a 12-team one.
@@ -22,56 +30,30 @@ generated, so a 3-team game is as easy to run as a 12-team one.
 ## Game rules
 
 Let `M` = number of clue levels (one station per level) and `N` = number of
-teams. `M` and `N` are independent; any combination plays.
+teams. They are independent; any combination plays.
 
 - There are `M` cards. Card 1 is unlocked; cards 2…M start locked.
 - Clue `L` leads to the location where code `L` is posted.
 - Submitting code `L` clears level `L` and unlocks card `L+1`.
 - Clearing the last level `M` claims the treasure.
 
-**Slots.** Evaluated live at the moment of each clear, where `alive` is the
-number of teams **not eliminated** — winners and finishers still hold the slot
-they took — including the submitting team:
+**Every level has a code for every team.** A code is not consumed by being
+used: any number of teams may clear the same level, in any order, at any time.
+No team is ever eliminated, blocked, or timed out of a level.
 
-```
-slots(level 1) = alive          -- the opening race eliminates nobody
-slots(level L) = alive - 1      -- every later race drops the slowest team
-```
+**Winning.** The first team to clear level `M` becomes the `winner`. Every
+later finisher becomes `finished` and is placed by finish time (2nd, 3rd, …).
+Teams that have not finished keep playing — a win by one team never ends
+another team's hunt. The game stops only when the admin ends it.
 
-**Elimination rule.** When the team that just cleared level `L` takes the last
-slot, every team still below level `L` is eliminated in the same transaction,
-with `out_at_level = L`.
+For 5 teams and 6 levels, every level offers 5 codes' worth of capacity, all
+five teams can reach the treasure, and the ordering is purely who got there
+first.
 
-**Two end conditions.**
-
-- *Last standing* — when exactly one `playing` team remains and nobody has
-  finished, it wins immediately (`status = 'winner'`), even with cards left
-  unopened. Skipped when the game started with a single team, so a solo practice
-  run plays the ladder to the end. The nobody-finished guard matters when levels
-  are scarcer than teams: there, teams leave `playing` by claiming the treasure,
-  and the stragglers still deserve their shot at it.
-- *Treasure claimed* — clearing level `M` sets `finished_at` and
-  `status = 'winner'` for the first finisher, `'finished'` for any later one.
-
-For `N` teams and `M = N` levels this produces exactly the intended shape:
-
-| Race (N=5, M=5) | Slots | Alive after |
-| --------------- | ----- | ----------- |
-| 1               | 5     | 5 — nobody out |
-| 2               | 4     | 4           |
-| 3               | 3     | 3           |
-| 4               | 2     | 2           |
-| 5 (treasure)    | 1     | 1 winner    |
-
-Mismatched counts still play, and admin is warned rather than blocked:
-
-- **Fewer levels than teams** (`M < N`): the treasure race has `alive - 1`
-  slots, so `N - M + 1` teams claim the treasure together and are placed by
-  finish time.
-- **More levels than teams** (`M > N`): last-standing ends the game at clue `N`
-  and the remaining cards go unused.
-
-`M = N` is the recommended setup and the admin dashboard says so.
+**What a stuck team looks like.** Since nothing removes a team, a team that
+cannot find a code simply stays on its level. The admin dashboard surfaces this
+as a stale "last code" time and a rising miss count, so the game master can go
+help rather than the game deciding for them.
 
 ## Data model
 
@@ -90,11 +72,15 @@ Mismatched counts still play, and admin is warned rather than blocked:
   (0 = only card 1 available).
 - `teams` gains:
   - `status text not null default 'playing' check (status in ('playing','eliminated','winner','finished'))`
-  - `eliminated_at timestamptz`
-  - `out_at_level int`
-- `game` gains `initial_team_count int`, snapshotted by `start_game` — used for
-  display and to disable last-standing in a solo game, not for slot math.
-- `attempts.result` gains `'too_late'`.
+    — revision 2 uses only `playing`, `winner` and `finished`. `eliminated`
+    stays permitted by the constraint but is never written; dropping it would
+    mean rewriting a shipped migration for no behavioural gain.
+  - `eliminated_at timestamptz` — **vestigial**, never written in revision 2.
+  - `out_at_level int` — **vestigial**, never written in revision 2.
+- `game` gains `initial_team_count int`, snapshotted by `start_game` for display
+  only. No rule depends on it in revision 2.
+- `attempts.result` permits `'too_late'`, which revision 2 never records — the
+  condition it described (arriving after the slots filled) no longer exists.
 - `normalize_code(text)` strips everything outside `[A-Za-z0-9]` before
   upper-casing, so `mango 77!` and `MANGO77` are the same code.
 
@@ -128,12 +114,12 @@ Read model for the player app, and the payload returned by every mutation.
   "ok": true,
   "team_name": "Team 2",
   "game_status": "live",
-  "status": "playing",          // playing | eliminated | winner | finished
+  "status": "playing",          // playing | winner | finished
   "cleared": 2,
   "total": 5,                   // = M, the number of cards
-  "out_at_level": null,
+  "out_at_level": null,         // vestigial, always null
   "place": null,                // see Placement
-  "race": { "level": 3, "slots": 3, "taken": 1 },   // null unless playing+live
+  "race": { "level": 3, "found": 1, "teams": 5 },   // null unless playing+live
   "cards": [
     { "level": 1, "unlocked": true,  "opened": true,  "clue": "…" },
     { "level": 2, "unlocked": true,  "opened": true,  "clue": "…" },
@@ -148,32 +134,31 @@ Read model for the player app, and the payload returned by every mutation.
 reaches the client and the grid cannot be read out of the network tab. Card `L`
 is unlocked when `cleared >= L - 1` and the game is live.
 
-**Placement.** `place = 1 + count(teams that outlasted this one)`: winners and
-finishers outlast everyone, ordered by `finished_at`; among eliminated teams a
-higher `out_at_level` outlasts a lower one, and at equal level an earlier
-`eliminated_at` places worse. Teams swept in one transaction share a place.
-Display only — no rule depends on it.
+`race` describes the level the team is currently hunting: `found` counts the
+teams that have already cleared it, `teams` is the total number of teams. It is
+progress information only — a full `found` never blocks anyone.
+
+**Placement.** `place = 1 + count(teams that finished before this one)`, set
+once a team finishes: the first finisher is 1st, the next 2nd, and so on by
+`finished_at`. A team still playing has `place: null`. Display only.
 
 ### `submit_code(p_team_code, p_code) -> jsonb`
 
-1. `select … for update` on the single `game` row — serializes all submits, so
-   two teams contending for the last slot resolve deterministically.
-2. Lock the team row. Reject unknown team code, `game_status <> 'live'`,
-   `status <> 'playing'`, and a submit within 5s of the team's last attempt
-   (`cooldown` with `retry_after_seconds`).
-3. Let `L = cleared + 1`. A code the team already used → `already_used`; a code
+1. Lock the team row. Reject unknown team code, `game_status <> 'live'`,
+   `status <> 'playing'` (a finished team cannot submit again), and a submit
+   within 5s of the team's last attempt (`cooldown` with `retry_after_seconds`).
+2. Let `L = cleared + 1`. A code the team already used → `already_used`; a code
    that isn't level `L`'s → `wrong`. Both recorded in `attempts`.
-4. If `count(cleared >= L) >= slots(L)` → record `too_late`, eliminate the team
-   with `out_at_level = L`, return `too_late`. (Reachable only if a sweep and
-   this submit interleave.)
-5. Otherwise record `correct` and set `current_position = L`. If `L = M`, set
-   `finished_at` and `status` (`winner` for the first finisher, else `finished`).
-6. If that clear filled the last slot, sweep: `status = 'eliminated'`,
-   `eliminated_at = now()`, `out_at_level = L` for every `playing` team with
-   `current_position < L`.
-7. Apply last-standing: if exactly one `playing` team remains,
-   `initial_team_count > 1`, and no team has finished, make it the winner.
-8. Return the fresh `team_view` payload plus `{ "correct": true }`.
+3. Otherwise record `correct` and set `current_position = L`. There is no
+   capacity check: any number of teams may clear the same level.
+4. If `L = M`, set `finished_at` and `status` — `winner` when no team has
+   finished yet, otherwise `finished`.
+5. Return the fresh `team_view` payload plus `{ "correct": true }`.
+
+No sweep, no `too_late`, no last-standing rule. Concurrency is therefore
+uncontended: two teams clearing the same level simultaneously both succeed, so
+the global `for update` lock on the `game` row that revision 1 needed is gone —
+the per-team row lock is enough to serialize one team's own double-submits.
 
 ### `open_card(p_team_code, p_level) -> jsonb`
 
@@ -194,8 +179,8 @@ deletes anyone (deletion stays an explicit per-team action).
 ### `start_game` / `reset_game`
 
 `start_game` snapshots `initial_team_count` and requires `sort_order` to cover
-`1…M` with no gaps (`level_gap`). It no longer requires `M = N`; count mismatch
-is a dashboard warning. `reset_game` clears `card_opens`, `attempts`, team
+`1…M` with no gaps (`level_gap`). Team count and level count are unrelated in
+revision 2, so there is no mismatch to warn about. `reset_game` clears `card_opens`, `attempts`, team
 status/progress and `initial_team_count`. Adding or deleting teams and stations
 stays blocked while live.
 
@@ -214,16 +199,21 @@ cleared_level, max_opened_level, out_at_level, last_solve_at, wrong_count
 event touching `teams`, `game`, or the team's `card_opens`.
 
 - **LoginScreen** — team code entry (existing floating-label field, reskinned).
-- **CardGridScreen** (new, replaces `GameScreen`)
-  - `RaceStatus` HUD: `3 OF 4 CODES FOUND — 1 SLOT LEFT`, live, anonymous.
+- **CardGridScreen** — replaces the old single-clue screen.
+  - `RaceStatus` banner: `2 OF 5 TEAMS FOUND THIS CODE`, live, anonymous, for
+    the level the team is currently hunting. Never names a rival, and never
+    implies a threat — there are no slots to lose. Hidden for finished teams and
+    non-live states.
   - `ScratchCard` grid, one per level: locked (padlock sprite + level number),
     foil (unscratched), or revealed clue.
   - `CodeEntry` for the current level, keeping the wrong-code shake, the
     already-used nudge and the cooldown countdown.
-- **EliminatedScreen** (new) — "GAME OVER — the other teams found all the
-  codes", the level reached, and final placing.
-- **FinishedScreen** — treasure claimed; shows placing when several finish.
+- **FinishedScreen** — treasure claimed. The first finisher gets the winner
+  treatment; later finishers get their placing (2nd, 3rd, …).
 - **WaitingScreen** — setup / paused / ended.
+
+There is no eliminated screen in revision 2: a team that never finds a code
+simply keeps hunting until the admin ends the game.
 
 ### ScratchCard component
 
@@ -237,24 +227,27 @@ state.
 
 ## Admin UI
 
-New single **Dashboard** page, the admin landing page, replacing Live Board:
+Single **Dashboard** page, the admin landing page:
 
-- Headline: game status, current race level, slots taken/total, teams alive.
-- Setup warning line comparing `M` and `N` ("5 teams, 3 clues — three teams will
-  reach the treasure together"), green when `M = N`.
+- Headline: game status, how many teams have finished, and the level spread —
+  which level the pack is on and how many teams have cleared it.
 - Live table from `admin_monitor` sorted by progress then last solve: team,
-  started?, cards opened, level cleared, state (`playing` / `out at 3` /
-  `winner`), last solve, wrong attempts. Eliminated rows muted, winner
-  highlighted, not-started flagged.
+  started?, cards opened, level cleared, state (`playing` / `winner` /
+  `finished`), last solve, wrong attempts. Winner highlighted, finishers
+  marked with their placing, not-started flagged, and a team whose last solve
+  is going stale is the signal that they need help.
 
-**Teams panel** gains a **Number of teams** field: type a count, press
-Generate, get `Team 1…Team N` with codes ready to print. The existing
-add/rename/delete list stays for renaming afterwards.
+No mismatch warning (team and level counts are unrelated now) and no
+"out at level" column (nobody goes out).
 
-**Stations panel** switches "sort order" to an explicit **Level** column,
-enforces contiguous levels, and validates codes against `^[A-Z0-9]{3,12}$`.
+**Teams panel** has a **Number of teams** field: type a count, press Generate,
+get `Team 1…Team N` with codes ready to print, plus the existing
+add/rename/regenerate/delete list.
 
-Control and Print stay, Print gaining the level number on each station sheet.
+**Stations panel** uses an explicit **Level** column, enforces contiguous
+levels, and validates codes against `^[A-Z0-9]{3,12}$`.
+
+Control and Print stay, Print showing the level number on each station sheet.
 
 ## Arcade skin
 
@@ -274,11 +267,12 @@ floating-label field and the chest mark stay in concept, redrawn in this style.
   (`4px 4px 0`), no blur or backdrop filters, `image-rendering: pixelated` on
   sprites, stepped `steps()` animations rather than eased ones.
 - **Sprites** (inline SVG on a pixel grid, no bitmap assets): treasure chest
-  redrawn 16×16-style, padlock for locked cards, coin for cleared levels, ghost
-  for elimination, flag for the final level.
+  redrawn 16×16-style, padlock for locked cards, coin for cleared levels, flag
+  for the final level, and a ghost used for the wrong-code state (revision 2
+  has no elimination for it to illustrate).
 - **Motion** — a coin-flip reveal on unlock, a stepped blink on the active card,
-  a ghost-wobble on the eliminated screen, a slow CRT scanline overlay at low
-  opacity. All gated behind `prefers-reduced-motion`.
+  a shake on a wrong code, a slow CRT scanline overlay at low opacity. All gated
+  behind `prefers-reduced-motion`.
 - **Print stays light** — the print stylesheet forces white paper, black text
   and drops the skin, so station and team sheets don't eat a toner cartridge.
 
@@ -292,29 +286,34 @@ Additive, in order, as `supabase/migrations/20260820000001…6`:
    publication.
 2. `normalize_code` rewrite.
 3. `team_view` (replaces `team_login`).
-4. `submit_code` rewrite with slots, sweep and last-standing.
+4. `submit_code` rewrite (revision 1 shipped slots/sweep/last-standing here;
+   revision 2 replaces it with a plain no-capacity clear — see the revision-2
+   migrations appended after the original six).
 5. `open_card` and `generate_teams`.
 6. `start_game` / `reset_game` guards, `admin_monitor`, RLS for `card_opens`,
    and dropping the route-generation RPC.
 
 ## Testing
 
-- **Unit, pure** — `slots(level, alive)`, card lock/open derivation, the sweep
-  predicate, placement ordering, and the `M`/`N` warning copy, as plain
-  functions in `src/lib/`.
-- **Integration (Supabase)** — two teams contending for the last slot in
-  parallel; the sweep; `too_late`; last-standing including the solo-game
-  exception; several finishers when `M < N-1`; `open_card` idempotency and its
-  locked-level rejection; locked clues absent from `team_view`;
-  `generate_teams` topping up and refusing while live; `level_gap`;
-  `reset_game`; RLS denying anon reads of `stations` and `card_opens`.
-- **Component** — card grid lock/foil/revealed states, race HUD copy, eliminated
-  screen, scratch reveal firing `open_card` exactly once, team-count generator
-  form.
+- **Unit, pure** — card lock/open derivation and placement ordering, as plain
+  functions in `src/lib/`. (Revision 2 deletes the slot and sweep helpers along
+  with the rules they served.)
+- **Integration (Supabase)** — every team clearing the same level (no capacity
+  limit); two teams clearing a level simultaneously both succeeding; the first
+  finisher becoming `winner` and later ones `finished` with correct placings; a
+  finished team refused further submits; nobody ever reaching `eliminated`;
+  `open_card` idempotency and its locked-level rejection; locked clues absent
+  from `team_view`; `generate_teams` topping up and refusing while live;
+  `level_gap`; `reset_progress`; RLS denying anon reads of `stations` and
+  `card_opens`.
+- **Component** — card grid lock/foil/revealed states, race HUD copy, winner vs
+  later-finisher screens, scratch reveal firing `open_card` exactly once,
+  team-count generator form.
 - Existing tests referencing `route_stops`, route generation or the single-clue
   `GameScreen` are rewritten, not deleted.
 
 ## Out of scope
 
 Team chat, photo proof, hints and penalties, multiple concurrent games,
-per-team custom ladders, admin-confirmed manual cuts, and sound effects.
+per-team custom ladders, elimination of any kind, manual progress overrides,
+and sound effects.

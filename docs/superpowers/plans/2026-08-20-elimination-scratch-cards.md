@@ -3264,3 +3264,647 @@ git commit -m "docs: elimination rules and updated runbook"
 **Spec coverage:** slots and sweep (Tasks 1, 5); both end conditions (Task 5); card ladder and locked-clue hiding (Task 4); scratch tracking (Tasks 6, 9); live anonymous counter (Tasks 8, 10); eliminated screen (Task 10); team-count generator (Tasks 6, 12); admin single page with started / failed / opened-level (Tasks 7, 11); station levels and code format (Tasks 2, 3, 13); start/reset guards (Task 7); arcade skin including print (Task 15); realtime (Task 8); testing pyramid (every task); docs (Task 16).
 
 **Known deviation from the spec:** the spec's `attempts` cleanup on `reset_game` is implemented in `reset_progress`, the RPC that already exists in this codebase — there is no separate `reset_game` function, and the plan does not add one.
+
+---
+
+# REVISION 2 — elimination removed
+
+**Requested mid-implementation, after Task 14.** Every level now has a code for
+every team: nobody is eliminated, and the first team to claim the treasure wins
+while the rest keep playing for a placing.
+
+**Execution order:** Tasks 17 → 18 → 19 → 20, THEN the arcade skin (Task 15),
+THEN docs and final verification (Task 16). The skin comes after the rework so
+it never styles a screen that is about to be deleted. Task 16's scope is
+amended by Task 20.
+
+**Spec:** `docs/superpowers/specs/2026-08-20-elimination-scratch-cards-design.md`
+(revision 2 — read it, not this plan's earlier tasks, where they disagree).
+
+## Revision 2 global constraints
+
+- No elimination anywhere: no slots, no capacity check, no sweep, no
+  `too_late`, no last-standing, no eliminated screen.
+- Team status in play is `playing` | `winner` | `finished`. The `eliminated`
+  value stays permitted by the shipped check constraint but must never be
+  written. `teams.eliminated_at` and `teams.out_at_level` become vestigial and
+  must never be written.
+- The first team to clear the final level is `winner`; every later finisher is
+  `finished`. `place` = 1 + the number of teams that finished earlier.
+- `race` in the `team_view` payload becomes `{ level, found, teams }`: the level
+  the team is hunting, how many teams already cleared it, and the total team
+  count. It is progress information and never blocks anyone.
+- A finished team may not submit again (`not_playing`).
+- Migrations stay append-only: revision 2 adds new migrations that
+  `create or replace` the two functions. Never edit a shipped migration, and
+  re-apply `revoke`/`grant` after every `create or replace`.
+
+---
+
+## Task 17: Retire the slot helpers
+
+**Files:**
+- Modify: `src/lib/rounds.ts`, `src/lib/rounds.test.ts`
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: `isUnlocked(level, cleared)` unchanged; `comparePlacement(a, b)`
+  simplified to order `winner`/`finished` (by `finished_at`, earliest first)
+  ahead of `playing` (by `cleared_level`, highest first). `slotsForLevel` and
+  `setupWarning` are DELETED, along with the `Placed` fields they needed.
+- `Placed` becomes `{ status: TeamStatus; cleared_level: number; finished_at: string | null }`.
+
+- [ ] **Step 1: Rewrite the test file**
+
+```ts
+// src/lib/rounds.test.ts
+import { isUnlocked, comparePlacement, type Placed } from './rounds'
+
+describe('isUnlocked', () => {
+  it('unlocks the first card and one past what is cleared', () => {
+    expect(isUnlocked(1, 0)).toBe(true)
+    expect(isUnlocked(2, 0)).toBe(false)
+    expect(isUnlocked(3, 2)).toBe(true)
+    expect(isUnlocked(4, 2)).toBe(false)
+  })
+})
+
+describe('comparePlacement', () => {
+  const playing: Placed = { status: 'playing', cleared_level: 1, finished_at: null }
+
+  it('ranks finishers ahead of teams still playing', () => {
+    const done: Placed = { status: 'finished', cleared_level: 5, finished_at: '2026-08-20T10:06:00Z' }
+    expect(comparePlacement(done, playing)).toBeLessThan(0)
+  })
+
+  it('orders finishers by finish time, earliest first', () => {
+    const first: Placed = { status: 'winner', cleared_level: 5, finished_at: '2026-08-20T10:05:00Z' }
+    const second: Placed = { status: 'finished', cleared_level: 5, finished_at: '2026-08-20T10:06:00Z' }
+    expect([second, first].sort(comparePlacement)).toEqual([first, second])
+  })
+
+  it('orders teams still playing by how far they have cleared', () => {
+    const ahead: Placed = { status: 'playing', cleared_level: 3, finished_at: null }
+    expect(comparePlacement(ahead, playing)).toBeLessThan(0)
+  })
+
+  it('treats winner and finished as the same rank, separated only by time', () => {
+    const winner: Placed = { status: 'winner', cleared_level: 5, finished_at: '2026-08-20T10:05:00Z' }
+    const later: Placed = { status: 'finished', cleared_level: 5, finished_at: '2026-08-20T10:07:00Z' }
+    expect(comparePlacement(winner, later)).toBeLessThan(0)
+    expect(comparePlacement(later, winner)).toBeGreaterThan(0)
+  })
+})
+```
+
+- [ ] **Step 2: Run and confirm it fails**
+
+Run: `npx vitest run src/lib/rounds.test.ts`
+Expected: FAIL — the old file still exports `slotsForLevel`/`setupWarning` and `Placed` still requires `out_at_level`/`eliminated_at`.
+
+- [ ] **Step 3: Rewrite `src/lib/rounds.ts`**
+
+```ts
+export type TeamStatus = 'playing' | 'eliminated' | 'winner' | 'finished'
+
+export type Placed = {
+  status: TeamStatus
+  cleared_level: number
+  finished_at: string | null
+}
+
+export function isUnlocked(level: number, cleared: number): boolean {
+  return level <= cleared + 1
+}
+
+/** Finishers first (earliest finish wins), then teams still hunting by progress. */
+export function comparePlacement(a: Placed, b: Placed): number {
+  const aDone = a.finished_at !== null
+  const bDone = b.finished_at !== null
+  if (aDone !== bDone) return aDone ? -1 : 1
+  if (aDone && bDone) return (a.finished_at as string).localeCompare(b.finished_at as string)
+  return b.cleared_level - a.cleared_level
+}
+```
+
+`TeamStatus` keeps all four values because the database check constraint still
+permits them; `eliminated` is simply never produced.
+
+- [ ] **Step 4: Run and confirm green**
+
+Run: `npx vitest run src/lib/rounds.test.ts` — expected PASS, 5 tests.
+Then `npx tsc --noEmit` — expect errors ONLY where `slotsForLevel`/`setupWarning`
+were used (`src/admin/Dashboard.tsx`), which Task 20 owns.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/lib/rounds.ts src/lib/rounds.test.ts
+git commit -m "refactor: drop slot and setup-warning helpers, simplify placement"
+```
+
+---
+
+## Task 18: Server rules without capacity
+
+**Files:**
+- Create: `supabase/migrations/20260820000009_no_elimination.sql`
+- Modify: `tests/integration/submit-code.test.ts`, `tests/integration/team-view.test.ts`
+
+**Interfaces:**
+- Consumes: `normalize_code`, `card_opens`, the `stations`/`teams`/`game` schema.
+- Produces: `team_view_json(uuid)` whose `race` is `{level, found, teams}` and whose `place` counts earlier finishers; `submit_code(text, text)` with no capacity check, returning `{ok:true, correct, reason?, view}` where `reason` is only ever `wrong` or `already_used`.
+
+- [ ] **Step 1: Rewrite the integration tests**
+
+Replace the elimination cases in `tests/integration/submit-code.test.ts` with
+these (keep the existing wrong-code, already-used, cooldown, paused and
+invalid-team cases exactly as they are — they are unaffected):
+
+```ts
+  it('lets every team clear the same level', async () => {
+    const { a, b, c } = await threeTeamGame()
+    for (const code of ['ALPHA1', 'BETA22', 'GAMMA3']) {
+      expect(await submit(code, 'CODE1')).toMatchObject({ ok: true, correct: true })
+    }
+    for (const id of [a.id, b.id, c.id]) {
+      expect((await teamRow(id))).toMatchObject({ current_position: 1, status: 'playing' })
+    }
+  })
+
+  it('never eliminates anyone, however far apart the teams are', async () => {
+    const { a, b, c } = await threeTeamGame()
+    for (const code of ['CODE1', 'CODE2', 'CODE3']) {
+      await submit('ALPHA1', code)
+      await clearCooldown(service, a.id)
+    }
+    // A has claimed the treasure; B and C have not moved at all
+    expect((await teamRow(a.id)).status).toBe('winner')
+    for (const id of [b.id, c.id]) {
+      expect((await teamRow(id))).toMatchObject({ status: 'playing', current_position: 0, out_at_level: null })
+    }
+    const { data } = await service.from('teams').select('status').eq('status', 'eliminated')
+    expect(data).toEqual([])
+  })
+
+  it('crowns the first finisher and places later ones behind it', async () => {
+    const { a, b, c } = await threeTeamGame()
+    for (const team of [['ALPHA1', a.id], ['BETA22', b.id]] as const) {
+      for (const code of ['CODE1', 'CODE2', 'CODE3']) {
+        await submit(team[0], code)
+        await clearCooldown(service, team[1])
+      }
+    }
+    expect((await teamRow(a.id)).status).toBe('winner')
+    expect((await teamRow(b.id)).status).toBe('finished')
+    expect((await teamRow(c.id)).status).toBe('playing')
+
+    const view = (await submit('GAMMA3', 'NOPE99')).view!
+    expect(view.status).toBe('playing')
+  })
+
+  it('refuses further submits from a finished team', async () => {
+    const { a } = await threeTeamGame()
+    for (const code of ['CODE1', 'CODE2', 'CODE3']) {
+      await submit('ALPHA1', code)
+      await clearCooldown(service, a.id)
+    }
+    expect(await submit('ALPHA1', 'CODE1')).toMatchObject({ ok: false, error: 'not_playing' })
+  })
+
+  it('lets two teams clear the same level simultaneously', async () => {
+    const { a, b } = await threeTeamGame()
+    await submit('ALPHA1', 'CODE1')
+    await submit('BETA22', 'CODE1')
+    for (const id of [a.id, b.id]) await clearCooldown(service, id)
+
+    const [first, second] = await Promise.all([submit('ALPHA1', 'CODE2'), submit('BETA22', 'CODE2')])
+    expect(first).toMatchObject({ ok: true, correct: true })
+    expect(second).toMatchObject({ ok: true, correct: true })
+    for (const id of [a.id, b.id]) expect((await teamRow(id)).current_position).toBe(2)
+  })
+```
+
+Delete the revision-1 cases: "eliminates the slowest team when a later race
+fills", "refuses a submit from an eliminated team", "crowns the last team
+standing without needing the final card", "lets a solo team play the whole
+ladder" (superseded — a solo team is just an ordinary game now), "places later
+finishers behind the winner when clues run short", and "serializes two teams
+racing for the last slot".
+
+In `tests/integration/team-view.test.ts`, replace the two `race` cases:
+
+```ts
+  it('reports the level being hunted with how many teams have cleared it', async () => {
+    await seedStations(service, 3)
+    await createTeam(service, 'Team 1', 'ALPHA1')
+    await createTeam(service, 'Team 2', 'BETA22')
+    await createTeam(service, 'Team 3', 'GAMMA3')
+    await setGameStatus(service, 'live')
+
+    expect((await view('ALPHA1')).race).toEqual({ level: 1, found: 0, teams: 3 })
+  })
+
+  it('counts teams already through the level being hunted', async () => {
+    await seedStations(service, 3)
+    const a = await createTeam(service, 'Team 1', 'ALPHA1')
+    const b = await createTeam(service, 'Team 2', 'BETA22')
+    await createTeam(service, 'Team 3', 'GAMMA3')
+    await setGameStatus(service, 'live')
+    await service.from('teams').update({ current_position: 2 }).eq('id', a.id)
+    await service.from('teams').update({ current_position: 1 }).eq('id', b.id)
+
+    // B is hunting level 2; only A is through it
+    expect((await view('BETA22')).race).toEqual({ level: 2, found: 1, teams: 3 })
+  })
+```
+
+Also update the eliminated-team case in that file: instead of setting
+`status:'eliminated'`, set the team `finished` with a `finished_at`, and assert
+`race` is null and `place` is 1.
+
+- [ ] **Step 2: Run and confirm failure**
+
+Run: `npx vitest run tests/integration/submit-code.test.ts tests/integration/team-view.test.ts --no-file-parallelism`
+Expected: FAIL — `race` still returns `slots`/`taken`, and the current
+`submit_code` still eliminates teams.
+
+- [ ] **Step 3: Write the migration**
+
+```sql
+-- supabase/migrations/20260820000009_no_elimination.sql
+-- Revision 2: every level has a code for every team. No slots, no sweep, no
+-- elimination. The first team to clear the final level wins; later finishers
+-- are placed behind it by finish time.
+
+create or replace function public.team_view_json(p_team_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_team teams%rowtype;
+  v_status text;
+  v_total int;
+  v_level int;
+  v_found int;
+  v_teams int;
+  v_race jsonb;
+  v_cards jsonb;
+  v_place int;
+begin
+  select * into v_team from teams where id = p_team_id;
+  if not found then
+    return jsonb_build_object('ok', false, 'error', 'invalid_team_code');
+  end if;
+
+  select status into v_status from game where id = 1;
+  select count(*)::int into v_total from stations;
+
+  select coalesce(
+    jsonb_agg(
+      jsonb_build_object(
+        'level', s.sort_order,
+        'unlocked', u.unlocked,
+        'opened', co.team_id is not null,
+        'clue', case when u.unlocked then s.clue_text else null end
+      )
+      order by s.sort_order
+    ),
+    '[]'::jsonb
+  )
+  into v_cards
+  from stations s
+  cross join lateral (
+    select (v_status = 'live' and s.sort_order <= v_team.current_position + 1) as unlocked
+  ) u
+  left join card_opens co on co.team_id = v_team.id and co.level = s.sort_order;
+
+  -- Progress info only: a full `found` never blocks anyone.
+  if v_team.status = 'playing' and v_status = 'live' and v_team.current_position < v_total then
+    v_level := v_team.current_position + 1;
+    select count(*)::int into v_found from teams where current_position >= v_level;
+    select count(*)::int into v_teams from teams;
+    v_race := jsonb_build_object('level', v_level, 'found', v_found, 'teams', v_teams);
+  end if;
+
+  if v_team.finished_at is not null then
+    select count(*)::int + 1 into v_place
+    from teams t
+    where t.id <> v_team.id
+      and t.finished_at is not null
+      and t.finished_at < v_team.finished_at;
+  end if;
+
+  return jsonb_build_object(
+    'ok', true,
+    'team_name', v_team.name,
+    'game_status', v_status,
+    'status', v_team.status,
+    'cleared', v_team.current_position,
+    'total', v_total,
+    'out_at_level', v_team.out_at_level,
+    'place', v_place,
+    'race', v_race,
+    'cards', v_cards
+  );
+end;
+$$;
+
+create or replace function public.submit_code(p_team_code text, p_code text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_team teams%rowtype;
+  v_status text;
+  v_code text := normalize_code(p_code);
+  v_last timestamptz;
+  v_wait int;
+  v_total int;
+  v_level int;
+  v_expected text;
+  v_first boolean;
+begin
+  select status into v_status from game where id = 1;
+
+  -- Only this team's own row needs locking now: clearing a level is
+  -- uncontended, so there is no global slot to serialize on.
+  select * into v_team from teams where team_code = normalize_code(p_team_code) for update;
+  if not found then
+    return jsonb_build_object('ok', false, 'error', 'invalid_team_code');
+  end if;
+  if v_status <> 'live' then
+    return jsonb_build_object('ok', false, 'error', 'game_not_live');
+  end if;
+  if v_team.status <> 'playing' then
+    return jsonb_build_object('ok', false, 'error', 'not_playing');
+  end if;
+
+  select max(created_at) into v_last from attempts where team_id = v_team.id;
+  if v_last is not null and v_last > now() - interval '5 seconds' then
+    v_wait := ceil(extract(epoch from (v_last + interval '5 seconds') - now()))::int;
+    return jsonb_build_object(
+      'ok', false, 'error', 'cooldown', 'retry_after_seconds', greatest(v_wait, 1)
+    );
+  end if;
+
+  select count(*)::int into v_total from stations;
+  v_level := v_team.current_position + 1;
+
+  if exists (select 1 from stations where code = v_code and sort_order <= v_team.current_position) then
+    insert into attempts (team_id, submitted_code, result) values (v_team.id, v_code, 'already_used');
+    return jsonb_build_object(
+      'ok', true, 'correct', false, 'reason', 'already_used', 'view', team_view_json(v_team.id)
+    );
+  end if;
+
+  select code into v_expected from stations where sort_order = v_level;
+  if v_expected is distinct from v_code then
+    insert into attempts (team_id, submitted_code, result) values (v_team.id, v_code, 'wrong');
+    return jsonb_build_object(
+      'ok', true, 'correct', false, 'reason', 'wrong', 'view', team_view_json(v_team.id)
+    );
+  end if;
+
+  insert into attempts (team_id, submitted_code, result) values (v_team.id, v_code, 'correct');
+
+  if v_level >= v_total then
+    select not exists (select 1 from teams where finished_at is not null) into v_first;
+    update teams
+    set current_position = v_level,
+        finished_at = now(),
+        status = case when v_first then 'winner' else 'finished' end
+    where id = v_team.id;
+  else
+    update teams set current_position = v_level where id = v_team.id;
+  end if;
+
+  return jsonb_build_object('ok', true, 'correct', true, 'view', team_view_json(v_team.id));
+end;
+$$;
+
+-- create or replace resets grants to include PUBLIC, so re-apply them.
+revoke execute on function public.team_view_json(uuid) from public, anon;
+grant execute on function public.submit_code(text, text) to anon, authenticated, service_role;
+```
+
+- [ ] **Step 4: Apply and verify**
+
+Run: `npx supabase db reset` then
+`npx vitest run tests/integration --no-file-parallelism`
+Expected: the whole integration suite green.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add supabase/migrations/20260820000009_no_elimination.sql tests/integration
+git commit -m "feat: every level open to every team, first finisher wins"
+```
+
+---
+
+## Task 19: Player screens without elimination
+
+**Files:**
+- Modify: `src/lib/api.ts`, `src/player/usePlayerGame.ts`, `src/player/RaceStatus.tsx`, `src/player/CardGrid.tsx`, `src/player/PlayerApp.tsx`, `src/player/PlayerApp.test.tsx`
+- Delete: `src/player/EliminatedScreen.tsx`
+
+**Interfaces:**
+- Consumes: the revision-2 `team_view` payload from Task 18.
+- Produces: `Race = { level: number; found: number; teams: number }`; `SubmitResult`'s `reason` union narrowed to `'wrong' | 'already_used'`; `Feedback` without `too_late`; `<RaceStatus race={Race} />` rendering the found/teams count.
+
+- [ ] **Step 1: Update the test file**
+
+In `src/player/PlayerApp.test.tsx`: change the `view()` fixture's `race` to
+`{ level: 2, found: 1, teams: 3 }`, replace the two race-count cases and the two
+elimination cases with:
+
+```tsx
+  it('shows how many teams have found the code it is hunting', async () => {
+    await loginAs(view())
+    expect(await screen.findByText(/1 of 3 teams found this code/i)).toBeInTheDocument()
+  })
+
+  it('shows the winner screen for the first finisher', async () => {
+    await loginAs(view({ status: 'winner', cleared: 3, race: null, place: 1 }))
+    expect(await screen.findByText(/treasure found/i)).toBeInTheDocument()
+  })
+
+  it('shows the placing for a later finisher', async () => {
+    await loginAs(view({ status: 'finished', cleared: 3, race: null, place: 2 }))
+    expect(await screen.findByText(/2nd/i)).toBeInTheDocument()
+  })
+```
+
+Delete: "warns when only one slot remains", "shows the too-late message when the
+slots filled first", and "switches to the eliminated screen with the level
+reached".
+
+- [ ] **Step 2: Run and confirm failure**
+
+Run: `npx vitest run src/player/PlayerApp.test.tsx`
+Expected: FAIL — the HUD still renders slot copy.
+
+- [ ] **Step 3: Update the types**
+
+In `src/lib/api.ts`:
+
+```ts
+export type Race = { level: number; found: number; teams: number }
+```
+
+and narrow the submit reason union:
+
+```ts
+  | { ok: true; correct: false; reason: 'wrong' | 'already_used'; view: TeamView }
+```
+
+- [ ] **Step 4: Update `usePlayerGame`**
+
+Narrow `Feedback` to drop `too_late`:
+
+```ts
+export type Feedback =
+  | { kind: 'wrong' | 'already_used' | 'correct' }
+  | { kind: 'cooldown'; seconds: number }
+  | { kind: 'error'; message: string }
+```
+
+Everything else in the hook is unchanged.
+
+- [ ] **Step 5: Rewrite `RaceStatus`**
+
+```tsx
+import type { Race } from '../lib/api'
+
+export default function RaceStatus({ race }: { race: Race }) {
+  return (
+    <div className="race-status" role="status">
+      <span className="race-count">
+        {race.found} of {race.teams} teams found this code
+      </span>
+    </div>
+  )
+}
+```
+
+No urgent state and no `race-urgent` class — nothing is at stake in a count any
+more, so styling it as an alarm would lie to the player.
+
+- [ ] **Step 6: Update `CardGrid` and `PlayerApp`**
+
+In `CardGrid.tsx`, delete the `too_late` branch of the feedback switch. In
+`PlayerApp.tsx`, delete the `EliminatedScreen` import and its
+`view.status === 'eliminated'` branch, so the remaining routing is: no view →
+login; `winner`/`finished` → FinishedScreen; game not live → WaitingScreen;
+otherwise → CardGrid. Then `git rm src/player/EliminatedScreen.tsx`.
+
+- [ ] **Step 7: Verify**
+
+Run: `npx vitest run src` — expect green.
+Then `npx tsc --noEmit` — expect errors ONLY in `src/admin/Dashboard.tsx`
+(Task 20 owns it).
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/lib/api.ts src/player
+git commit -m "feat: player screens for a straight race, no elimination"
+```
+
+---
+
+## Task 20: Dashboard without elimination, and docs
+
+**Files:**
+- Modify: `src/admin/Dashboard.tsx`, `src/admin/Dashboard.test.tsx`, `src/admin/TeamsPanel.tsx`, `README.md`
+
+**Interfaces:**
+- Consumes: `comparePlacement` (Task 17), `admin_monitor`.
+- Produces: no new exports.
+
+- [ ] **Step 1: Update the dashboard test**
+
+Replace the slots/mismatch cases in `src/admin/Dashboard.test.tsx` with:
+
+```tsx
+  it('summarises how many teams have finished', () => {
+    mount([
+      row({ name: 'Champs', status: 'winner', cleared_level: 3, finished_at: '2026-08-20T10:00:00Z' }),
+      row({ name: 'Chasers', cleared_level: 1, started: true }),
+    ])
+    expect(screen.getByText(/1 of 2 teams finished/i)).toBeInTheDocument()
+  })
+
+  it('shows where the pack has reached', () => {
+    mount([
+      row({ name: 'A', cleared_level: 2, started: true }),
+      row({ name: 'B', cleared_level: 1, started: true }),
+    ])
+    expect(screen.getByText(/clue 2/i)).toBeInTheDocument()
+  })
+
+  it('marks a later finisher with its placing', () => {
+    mount([row({ name: 'Second', status: 'finished', cleared_level: 3, finished_at: '2026-08-20T10:09:00Z' })])
+    expect(screen.getByText('Second').closest('tr')).toHaveTextContent(/finished/i)
+  })
+```
+
+Delete the cases asserting "teams alive", the mismatch warning, and `Out at N`.
+Keep the started/not-started case, the opened/cleared case and the
+winner-highlight case as they are.
+
+- [ ] **Step 2: Run and confirm failure**
+
+Run: `npx vitest run src/admin/Dashboard.test.tsx`
+Expected: FAIL — the component still imports the deleted `slotsForLevel` and
+`setupWarning`.
+
+- [ ] **Step 3: Update `Dashboard.tsx`**
+
+- Drop the `slotsForLevel` and `setupWarning` imports and the setup-warning
+  paragraph entirely.
+- Headline becomes: game status, `${finished} of ${rows.length} teams finished`,
+  and — when at least one team is still playing — `clue ${packLevel}`, where
+  `packLevel = Math.min(...playing.map(r => r.cleared_level)) + 1`, guarded for
+  the empty case exactly as the current code guards it.
+- State column: `Winner` for `winner`, `Finished` for `finished`, `Playing`
+  otherwise. Remove the `Out at <level>` branch.
+- Keep `row-winner`, `row-idle` and the `comparePlacement` sort. Drop `row-out`.
+
+In `src/admin/TeamsPanel.tsx`, drop the `— out at N` text from the progress
+column for the same reason; keep the trophy for winner/finished.
+
+- [ ] **Step 4: Update `README.md`**
+
+Rewrite the rules section for revision 2: the shared ladder, a code for every
+team at every level, first finisher wins and later finishers are placed, no
+elimination, the admin flow (generate teams → one station per level, contiguous
+→ print → start), that scratching is recorded server-side, and the local
+commands (`npx supabase start`, `npx supabase db reset`, `npm run test:unit`,
+`npm run test:integration`).
+
+- [ ] **Step 5: Verify everything**
+
+```bash
+npx tsc --noEmit
+npx vitest run src
+npx supabase db reset && npx vitest run tests/integration --no-file-parallelism
+npm run build
+```
+
+All four must pass. This is the revision-2 equivalent of the original Task 16
+gate; Task 16's own step 3 (playing a game by hand) still applies but with the
+revision-2 expectation — no team is ever eliminated, and a second finisher is
+placed 2nd rather than knocked out.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/admin README.md
+git commit -m "feat: dashboard and docs for a straight race"
+```
