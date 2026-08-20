@@ -8,6 +8,8 @@ type Props = {
   /** The treasure level: flagged rather than coined, per the spec's sprite roles. */
   isFinal?: boolean
   onOpen: (level: number) => void
+  /** Ask the grid to put this level's clue up on its sheet of paper. */
+  onReveal?: (level: number) => void
 }
 
 const REVEAL_AT = 0.55
@@ -17,7 +19,7 @@ const SAMPLE_EVERY = 6
 /** Read back a 1/8-scale copy, so ~1/64 of the pixels. */
 const SAMPLE_SCALE = 8
 
-export default function ScratchCard({ card, isCurrent, isFinal = false, onOpen }: Props) {
+export default function ScratchCard({ card, isCurrent, isFinal = false, onOpen, onReveal }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [scratching, setScratching] = useState(false)
   const [revealed, setRevealed] = useState(card.opened)
@@ -31,6 +33,15 @@ export default function ScratchCard({ card, isCurrent, isFinal = false, onOpen }
     reported.current = true
     onOpen(card.level)
   }, [card.level, onOpen])
+
+  // The foil coming off is what puts the clue on screen; firing once keeps a
+  // long drag from reopening the sheet on every sampled stroke.
+  const reveal = useCallback(() => {
+    setRevealed(wasRevealed => {
+      if (!wasRevealed) onReveal?.(card.level)
+      return true
+    })
+  }, [card.level, onReveal])
 
   // Paint the foil. The canvas is always mounted while covered so this ref is
   // populated; canScratch only flips once painting actually succeeds. jsdom
@@ -109,9 +120,9 @@ export default function ScratchCard({ card, isCurrent, isFinal = false, onOpen }
 
       strokes.current += 1
       if (strokes.current % SAMPLE_EVERY !== 0) return
-      if (clearedFraction(canvas) >= REVEAL_AT) setRevealed(true)
+      if (clearedFraction(canvas) >= REVEAL_AT) reveal()
     },
-    [clearedFraction, report],
+    [clearedFraction, report, reveal],
   )
 
   if (!card.unlocked) {
@@ -132,8 +143,20 @@ export default function ScratchCard({ card, isCurrent, isFinal = false, onOpen }
         {isFinal ? <FlagSprite className="sprite sprite-sm" /> : <CoinSprite className="sprite sprite-sm" />}
         {card.level}
       </span>
+      {/* Only ever set for a level this team has already cleared — the server
+          withholds the location of the level being hunted, since that is the
+          answer to the clue. */}
       {card.location && <p className="scratch-location">{card.location}</p>}
       <p className="scratch-clue">{card.clue}</p>
+      {!showFoil && (
+        <button
+          type="button"
+          className="scratch-read"
+          onClick={() => onReveal?.(card.level)}
+        >
+          Read the clue
+        </button>
+      )}
       {showFoil && (
         <canvas
           ref={canvasRef}
@@ -157,7 +180,7 @@ export default function ScratchCard({ card, isCurrent, isFinal = false, onOpen }
           className="scratch-reveal"
           onClick={() => {
             report()
-            setRevealed(true)
+            reveal()
           }}
         >
           Scratch to reveal

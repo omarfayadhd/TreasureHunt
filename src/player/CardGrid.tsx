@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import type { TeamView } from '../lib/api'
 import type { Feedback } from './usePlayerGame'
 import ScratchCard from './ScratchCard'
+import ClueScroll from './ClueScroll'
 import RaceStatus from './RaceStatus'
 import { GhostSprite } from './sprites'
 
@@ -16,6 +17,8 @@ type Props = {
 export default function CardGrid({ view, feedback, busy, onSubmit, onOpen }: Props) {
   const [code, setCode] = useState('')
   const [cooldown, setCooldown] = useState(0)
+  // Which level's clue is up on the sheet. One sheet for the whole grid.
+  const [scrollLevel, setScrollLevel] = useState<number | null>(null)
 
   useEffect(() => {
     if (feedback?.kind === 'cooldown') setCooldown(feedback.seconds)
@@ -44,6 +47,10 @@ export default function CardGrid({ view, feedback, busy, onSubmit, onOpen }: Pro
         return { className: 'msg msg-warn', text: "You've used that one — follow your newest clue!" }
       case 'not_your_code':
         return { className: 'msg msg-bad shake', text: 'That code belongs to another team.', ghost: true }
+      // The one thing a losing team ever learns, and only once it is standing at
+      // the empty box: there is no second place to award.
+      case 'treasure_claimed':
+        return { className: 'msg msg-bad', text: 'The treasure was already claimed.', ghost: true }
       case 'correct':
         return { className: 'msg msg-good', text: 'Code cracked! Next card unlocked.' }
       case 'error':
@@ -54,6 +61,7 @@ export default function CardGrid({ view, feedback, busy, onSubmit, onOpen }: Pro
   })()
 
   const currentLevel = view.cleared + 1
+  const scrollCard = view.cards.find(card => card.level === scrollLevel)
 
   return (
     <div className="player-screen">
@@ -74,6 +82,7 @@ export default function CardGrid({ view, feedback, busy, onSubmit, onOpen }: Pro
             isCurrent={card.level === currentLevel}
             isFinal={card.level === view.total}
             onOpen={onOpen}
+            onReveal={setScrollLevel}
           />
         ))}
       </div>
@@ -95,6 +104,15 @@ export default function CardGrid({ view, feedback, busy, onSubmit, onOpen }: Pro
           {cooldown > 0 ? `Wait ${cooldown}s…` : 'Submit code'}
         </button>
       </form>
+
+      {scrollCard && scrollCard.clue && (
+        <ClueScroll
+          teamName={view.team_name}
+          level={scrollCard.level}
+          clue={scrollCard.clue}
+          onClose={() => setScrollLevel(null)}
+        />
+      )}
 
       {message && (
         <p className={message.className} role="status">

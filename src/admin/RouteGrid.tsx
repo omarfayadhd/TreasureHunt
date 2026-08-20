@@ -11,6 +11,8 @@ type Props = {
   rows: RouteCell[]
   disabled: boolean
   onReload: () => void
+  /** The shared final location. Never a route stop, so it is not offered here. */
+  treasureStationId?: string | null
 }
 
 const key = (teamId: string, level: number) => `${teamId}:${level}`
@@ -56,8 +58,11 @@ export function routeIssues(teams: RouteTeam[], stations: StationRow[], rows: Ro
   return issues
 }
 
-export default function RouteGrid({ teams, stations, rows, disabled, onReload }: Props) {
+export default function RouteGrid({
+  teams, stations, rows, disabled, onReload, treasureStationId = null,
+}: Props) {
   const [error, setError] = useState<string | null>(null)
+  const pickable = stations.filter(station => station.id !== treasureStationId)
 
   const cells = new Map(rows.map(r => [key(r.team_id, r.level), r]))
   const highest = rows.length ? Math.max(...rows.map(r => r.level)) : 0
@@ -73,6 +78,8 @@ export default function RouteGrid({ teams, stations, rows, disabled, onReload }:
         return `${team.name} already visits ${stationName} at another level.`
       case 'game_running':
         return 'The hunt is running — end it or reset progress before editing routes.'
+      case 'is_the_treasure':
+        return `${stationName} is the treasure — teams may only meet there at the end.`
       case 'not_found':
         return 'That stop is no longer there — the grid has been refreshed.'
       default:
@@ -140,7 +147,7 @@ export default function RouteGrid({ teams, stations, rows, disabled, onReload }:
                       onChange={e => handleChange(team, level, e.target.value)}
                     >
                       <option value="">—</option>
-                      {stations.map(station => (
+                      {pickable.map(station => (
                         <option key={station.id} value={station.id}>{station.name}</option>
                       ))}
                     </select>

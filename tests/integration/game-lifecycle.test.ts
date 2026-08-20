@@ -1,4 +1,6 @@
-import { anonClient, adminClient, serviceClient, resetDb, seedStations, createTeam, setRoute } from './helpers'
+import {
+  anonClient, adminClient, serviceClient, resetDb, seedStations, createTeam, setRoute, setTreasure,
+} from './helpers'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 const service = serviceClient()
@@ -23,9 +25,10 @@ describe('game lifecycle RPCs', () => {
   })
 
   it('pause, resume and end follow the allowed transitions', async () => {
-    const stations = await seedStations(service, 1)
+    const stations = await seedStations(service, 2)
     const team = await createTeam(service, 'T1', 'TEAM-11')
     await setRoute(service, team.id, [{ level: 1, stationId: stations[0].id, code: 'AAA111' }])
+    await setTreasure(service, stations[1].id, 'TREAS9')
 
     expect(await rpc('pause_game')).toEqual({ ok: false, error: 'not_live' })
     expect(await rpc('resume_game')).toEqual({ ok: false, error: 'not_paused' })
@@ -56,43 +59,47 @@ describe('start_game', () => {
     expect(await admin.rpc('start_game').then(r => r.data)).toMatchObject({ ok: false, error: 'no_teams' })
   })
 
-  it('refuses with fewer locations than teams', async () => {
+  it('refuses when the staggered pool is smaller than the field', async () => {
     const admin = await adminClient()
-    await seedStations(service, 1)
+    const stations = await seedStations(service, 2)
     await createTeam(service, 'Team 1', 'ALPHA1')
     await createTeam(service, 'Team 2', 'BETA22')
+    // Two locations, one of them the treasure: only one left for two teams.
+    await setTreasure(service, stations[1].id, 'TREAS9')
     expect(await admin.rpc('start_game').then(r => r.data))
-      .toMatchObject({ ok: false, error: 'not_enough_locations', locations: 1, teams: 2 })
+      .toMatchObject({ ok: false, error: 'not_enough_locations', locations: 2, teams: 2 })
   })
 
   it('refuses when a team has no route at all', async () => {
     const admin = await adminClient()
-    const stations = await seedStations(service, 2)
+    const stations = await seedStations(service, 3)
     const a = await createTeam(service, 'Team 1', 'ALPHA1')
     await createTeam(service, 'Team 2', 'BETA22')
     await setRoute(service, a.id, [
       { level: 1, stationId: stations[0].id, code: 'AAA111' },
       { level: 2, stationId: stations[1].id, code: 'AAA222' },
     ])
+    await setTreasure(service, stations[2].id, 'TREAS9')
     expect(await admin.rpc('start_game').then(r => r.data))
       .toMatchObject({ ok: false, error: 'route_incomplete', team: 'Team 2' })
   })
 
   it('refuses when a route has a hole in its levels', async () => {
     const admin = await adminClient()
-    const stations = await seedStations(service, 3)
+    const stations = await seedStations(service, 4)
     const a = await createTeam(service, 'Team 1', 'ALPHA1')
     await setRoute(service, a.id, [
       { level: 1, stationId: stations[0].id, code: 'AAA111' },
       { level: 3, stationId: stations[2].id, code: 'AAA333' },
     ])
+    await setTreasure(service, stations[3].id, 'TREAS9')
     expect(await admin.rpc('start_game').then(r => r.data))
       .toMatchObject({ ok: false, error: 'route_incomplete', team: 'Team 1' })
   })
 
   it('refuses when the teams have routes of different lengths', async () => {
     const admin = await adminClient()
-    const stations = await seedStations(service, 2)
+    const stations = await seedStations(service, 3)
     const a = await createTeam(service, 'Team 1', 'ALPHA1')
     const b = await createTeam(service, 'Team 2', 'BETA22')
     await setRoute(service, a.id, [
@@ -100,13 +107,14 @@ describe('start_game', () => {
       { level: 2, stationId: stations[1].id, code: 'AAA222' },
     ])
     await setRoute(service, b.id, [{ level: 1, stationId: stations[1].id, code: 'BBB111' }])
+    await setTreasure(service, stations[2].id, 'TREAS9')
     expect(await admin.rpc('start_game').then(r => r.data))
       .toMatchObject({ ok: false, error: 'route_length_mismatch' })
   })
 
   it('starts on a valid rotation and snapshots the team count', async () => {
     const admin = await adminClient()
-    const stations = await seedStations(service, 3)
+    const stations = await seedStations(service, 4)
     const a = await createTeam(service, 'Team 1', 'ALPHA1')
     const b = await createTeam(service, 'Team 2', 'BETA22')
     const c = await createTeam(service, 'Team 3', 'GAMMA3')
@@ -123,9 +131,11 @@ describe('start_game', () => {
       { level: 1, stationId: stations[2].id, code: 'CCC111' },
       { level: 2, stationId: stations[0].id, code: 'CCC222' },
     ])
+    await setTreasure(service, stations[3].id, 'TREAS9')
 
+    // Two staggered legs plus the treasure: three cards to clear.
     expect(await admin.rpc('start_game').then(r => r.data))
-      .toMatchObject({ ok: true, status: 'live', teams: 3, levels: 2 })
+      .toMatchObject({ ok: true, status: 'live', teams: 3, levels: 3 })
     const { data } = await service.from('game').select('initial_team_count').single()
     expect((data as { initial_team_count: number }).initial_team_count).toBe(3)
   })
@@ -136,12 +146,13 @@ describe('reset_progress', () => {
 
   it('clears statuses, cards and the team-count snapshot', async () => {
     const admin = await adminClient()
-    const stations = await seedStations(service, 2)
+    const stations = await seedStations(service, 3)
     const team = await createTeam(service, 'Team 1', 'ALPHA1')
     await setRoute(service, team.id, [
       { level: 1, stationId: stations[0].id, code: 'AAA111' },
       { level: 2, stationId: stations[1].id, code: 'AAA222' },
     ])
+    await setTreasure(service, stations[2].id, 'TREAS9')
     await admin.rpc('start_game')
     await service.from('card_opens').insert({ team_id: team.id, level: 1 })
     await service.from('teams')

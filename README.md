@@ -23,13 +23,17 @@ Postgres `SECURITY DEFINER` RPCs — players never get direct table access.
 
 - **Locations are a shared pool.** A location is just a place with a clue —
   it has no level and no code of its own.
-- **Every team has its own route** of `M` levels through that pool
+- **Every team has its own route** of `M` staggered legs through that pool
   (`team_stations`). Level 1 is unlocked for every team from the start;
   clearing level `L` unlocks level `L + 1`. Every team's route is the same
   length, and a team never visits the same location twice.
-- **Every stop has its own code, and that code belongs to one team.** Typing
-  a code issued to another team is refused with "That code belongs to another
-  team" and advances nobody.
+- **One treasure ends the hunt.** Level `M + 1` is the same final location for
+  every team, with a single shared code (`game.treasure_station_id`,
+  `game.treasure_code`). It may not sit on any team's route.
+- **Every staggered stop has its own code, and that code belongs to one team.**
+  Typing a code issued to another team is refused with "That code belongs to
+  another team" and advances nobody. The treasure is the one exception: its code
+  is shared, so anyone who learns it can send it.
 - **The staggering rule:** no two teams are at the same location at the same
   level. The same location serves different teams at *different* levels, so
   there is never a queue at one place. This needs at least as many locations
@@ -37,10 +41,15 @@ Postgres `SECURITY DEFINER` RPCs — players never get direct table access.
 - A code isn't consumed by being used — any number of teams can clear their
   own level `L`, in any order, at any time. No team is ever blocked, timed
   out, or knocked out of the hunt.
-- The first team to clear the final level becomes the winner. Every later
-  finisher is placed behind it by finish time (2nd, 3rd, …). A team finishing
-  never ends another team's hunt — everyone still playing keeps playing until
-  the admin ends the game.
+- **The first team to send the treasure code wins, and nobody else can.** A team
+  that reaches an already-claimed treasure is told "The treasure was already
+  claimed", does not advance, and there is no second place — no placings appear
+  anywhere in the player app.
+- **A win is invisible to everyone else.** It changes no other team's row and
+  does not end the game: the hunt stays live until the admin presses End hunt,
+  so a team still hunting learns nothing until it stands at the empty box. The
+  dashboard shows the truth — `Winner`, and `Too late` for teams that got there
+  after it was gone.
 - Since nothing removes a team, a team that can't find a code just sits on
   its level. The admin dashboard surfaces this as a stale "last code" time
   and a rising miss count, so the game master can go help.
@@ -65,9 +74,22 @@ cp .env.example .env.local
 Then set `VITE_SUPABASE_URL=http://127.0.0.1:54321` and set
 `VITE_SUPABASE_ANON_KEY` to the anon key printed by `supabase status`.
 
-Create a local admin user: open http://127.0.0.1:54323 → Authentication →
-Add user (e.g. `admin@local.dev` / `local-admin-123`, auto-confirm), then sign
-in at `/admin`.
+`supabase db reset` also seeds a throwaway local game (never a hosted one):
+admin `admin@test.local` / `test-password-123`, three teams and four locations
+on staggered routes, with fixed codes so you can play on a phone without
+opening the admin:
+
+| Team | Code | Level 1 | Level 2 | Treasure (shared) |
+|------|------|---------|---------|-------------------|
+| Owls | `OWLS11` | Reception desk `RECEP1` | Kitchen fridge `KITCH2` | Server cupboard `TREAS9` |
+| Mongooses | `MONG22` | Kitchen fridge `KITCH4` | Fire stairwell `STAIR5` | Server cupboard `TREAS9` |
+| Foxes | `FOXX33` | Fire stairwell `STAIR7` | Reception desk `RECEP9` | Server cupboard `TREAS9` |
+
+The game is left in `setup`, so press **Start hunt** on Game control first.
+Typing another team's code (say `KITCH4` as Owls) is the quickest way to see a
+refusal; sending `TREAS9` from two teams in turn shows the win and then "the
+treasure was already claimed". To get back to this state, run
+`supabase db reset` again.
 
 ## Tests
 
@@ -105,33 +127,42 @@ well-known local keys.
 2. **Stations tab, Locations list** — create the pool of places: a name and
    the clue that leads *to* it. No codes and no levels here. Add at least as
    many locations as you have teams.
-3. **Stations tab, Team routes grid** — one row per team, one column per
-   level. Pick a location per cell; the server mints that cell's code and
+
+   Clues take a small markup: `**bold**`, `*italic*`, one newline for a new
+   line, a blank line for a new verse, `---` for an ornament rule. The panel
+   previews each clue exactly as the team will read it. Nothing else is
+   interpreted — a clue containing HTML shows that HTML as text.
+3. **Stations tab, The treasure** — pick the shared final location; the server
+   mints its one code. It must be a place no team's route passes through.
+4. **Stations tab, Team routes grid** — one row per team, one column per
+   staggered leg (the treasure is not offered as a cell). Pick a location per cell; the server mints that cell's code and
    refuses a pick that would put two teams in the same place at the same
    level, or send one team to the same place twice. The grid lists what is
    still missing (empty cells, uneven route lengths, too few locations).
-4. **Print tab** — one sheet per location, holding one slip per team that
+5. **Print tab** — one sheet per location, holding one slip per team that
    visits it (post them side by side at that place), then team login slips to
    hand out, then a per-team master sheet for you — **admin copy, don't hand
    it out**.
-5. **Game control → Start hunt** — refused unless every team has a complete
-   route of the same length and there are at least as many locations as
-   teams. Players then open the site, enter their team code, and each team's
+6. **Game control → Start hunt** — refused unless the treasure is set and off
+   every route, every team has a complete route of the same length, and there is
+   one staggered location per team beyond the treasure. Players then open the site, enter their team code, and each team's
    own level 1 is unlocked.
-6. Watch the **dashboard** — the "Hunting" column names the location each
-   team is looking for right now. Scratching a card and submitting a code is always
+   Watch the **dashboard** — the "Hunting" column names the location each team
+   is looking for right now, the treasure included. Scratching a card and submitting a code is always
    recorded server-side, so the board reflects exactly what happened, in
    order. Nobody is eliminated — a stalled team just shows a stale "last
    code" time and a rising miss count; go help them in person.
-7. The first team to clear the final level becomes the winner; later
-   finishers are placed by finish time and keep playing until you end the
-   game. After the win: **End hunt**. To run it again later: **Reset
-   progress** (keeps teams, locations and routes).
+7. The first team to send the treasure code wins. Nobody is told — the losing
+   teams keep hunting, and only a team that reaches the claimed treasure hears
+   about it. Announce the winner in the room, then **End hunt**. To run it again
+   later: **Reset progress** (keeps teams, locations, routes and the treasure).
 
 ## How cheating is prevented
 
 - Clues and codes live only in Postgres; the browser receives a clue only
   after the team earns it.
+- Clue markup is parsed to data and rendered as elements, never as an HTML
+  string, so a clue can never inject markup or script into a player's phone.
 - Wrong codes get a generic response (no probing which codes exist).
 - Codes are team-specific: `submit_code` only ever compares against the
   calling team's own `team_stations` rows, so a code overheard from, or

@@ -27,7 +27,7 @@ function view(overrides: Partial<TeamView> = {}): TeamView {
     race: { level: 2, found: 1, teams: 3 },
     cards: [
       { level: 1, unlocked: true, opened: true, clue: 'Under the plant', location: 'Lobby' },
-      { level: 2, unlocked: true, opened: false, clue: 'Behind the fridge', location: 'Kitchen' },
+      { level: 2, unlocked: true, opened: false, clue: 'Behind the fridge', location: null },
       { level: 3, unlocked: false, opened: false, clue: null, location: null },
     ],
     ...overrides,
@@ -117,9 +117,12 @@ describe('PlayerApp', () => {
     expect(await screen.findByText(/treasure found/i)).toBeInTheDocument()
   })
 
-  it('shows the placing for a later finisher', async () => {
-    await loginAs(view({ status: 'finished', cleared: 3, race: null, place: 2 }))
-    expect(await screen.findByText(/2nd/i)).toBeInTheDocument()
+  // One treasure, one winner: a team that arrives late is told on the code form
+  // and keeps hunting, so no screen ever shows a placing.
+  it('never shows a placing', async () => {
+    await loginAs(view({ status: 'winner', cleared: 3, race: null, place: 1 }))
+    expect(await screen.findByText(/treasure found/i)).toBeInTheDocument()
+    expect(screen.queryByText(/\b1st\b|\b2nd\b|\b3rd\b/i)).not.toBeInTheDocument()
   })
 
   it('waits for kickoff when the game is in setup', async () => {
@@ -129,12 +132,13 @@ describe('PlayerApp', () => {
 })
 
 describe('per-team routes', () => {
-  it('names the location of each unlocked card and hides locked ones', async () => {
+  // A location is the answer to its clue, so the server sends it only for levels
+  // the team has already cleared. Level 2 is the one being hunted: clue, no place.
+  it('names a cleared location but never the one still being hunted', async () => {
     await loginAs(view())
     expect(await screen.findByText('Lobby')).toBeInTheDocument()
-    expect(screen.getByText('Kitchen')).toBeInTheDocument()
-    // The level 3 card is locked: neither its clue nor its location is sent.
-    expect(screen.queryByText(/vault/i)).not.toBeInTheDocument()
+    expect(screen.getByText('Behind the fridge')).toBeInTheDocument()
+    expect(screen.queryByText('Kitchen')).not.toBeInTheDocument()
   })
 
   it("says so when the code belongs to another team", async () => {
@@ -143,5 +147,57 @@ describe('per-team routes', () => {
     await userEvent.type(screen.getByLabelText(/enter code/i), 'BBB111')
     await userEvent.click(screen.getByRole('button', { name: /submit code/i }))
     expect(await screen.findByText(/belongs to another team/i)).toBeInTheDocument()
+  })
+})
+
+describe('clue sheet', () => {
+  it('opens the styled clue sheet when a card is scratched', async () => {
+    const scratched = view({
+      cards: [
+        { level: 1, unlocked: true, opened: false, clue: 'Two things **begin** here', location: null },
+        { level: 2, unlocked: false, opened: false, clue: null, location: null },
+      ],
+      cleared: 0,
+      total: 2,
+    })
+    // Scratching reports the open, so the view that comes back has to be this
+    // team's view — otherwise the sheet would show whatever the stub returned.
+    mockedOpen.mockResolvedValue({ ok: true, level: 1, clue: 'Two things **begin** here', view: scratched })
+    await loginAs(scratched)
+
+    await userEvent.click(await screen.findByRole('button', { name: /scratch to reveal/i }))
+    expect(await screen.findByRole('heading', { name: 'Team 1 – Clue 1' })).toBeInTheDocument()
+    expect(screen.getByText('begin').tagName).toBe('STRONG')
+  })
+
+  it('closes the clue sheet again', async () => {
+    await loginAs(view({
+      cards: [{ level: 1, unlocked: true, opened: true, clue: 'Two things begin', location: null }],
+      cleared: 0,
+      total: 1,
+    }))
+    await userEvent.click(await screen.findByRole('button', { name: /read the clue/i }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /close/i }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
+
+describe('the claimed treasure', () => {
+  it('says the treasure is gone when another team got there first', async () => {
+    await loginAs(view())
+    mockedSubmit.mockResolvedValue({
+      ok: true, correct: false, reason: 'treasure_claimed', view: view(),
+    })
+    await userEvent.type(screen.getByLabelText(/enter code/i), 'TREAS9')
+    await userEvent.click(screen.getByRole('button', { name: /submit code/i }))
+    expect(await screen.findByText(/already claimed/i)).toBeInTheDocument()
+  })
+
+  it('congratulates the winner without ranking anyone', async () => {
+    await loginAs(view({ status: 'winner', cleared: 3, total: 3, place: 1, race: null }))
+    expect(await screen.findByText(/treasure found/i)).toBeInTheDocument()
+    // One winner, no placings: nothing on screen should read as an ordinal.
+    expect(screen.queryByText(/\b1st\b|\b2nd\b|\b3rd\b|finished 1/i)).not.toBeInTheDocument()
   })
 })

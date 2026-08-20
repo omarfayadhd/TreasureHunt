@@ -75,8 +75,9 @@ describe('team_view', () => {
     expect(result.total).toBe(3)
     expect(result.cards.map(c => c.level)).toEqual([1, 2, 3])
     expect(result.cards.map(c => c.unlocked)).toEqual([true, false, false])
-    expect(result.cards[0].location).toBe('Station 1')
-    expect(result.cards[1].location).toBeNull()
+    // The clue is unlocked; its answer — the location — is not given away.
+    expect(result.cards.map(c => c.location)).toEqual([null, null, null])
+    expect(JSON.stringify(result)).not.toContain('Station 1')
     expect(JSON.stringify(result)).not.toContain('station 2')
   })
 
@@ -88,8 +89,11 @@ describe('team_view', () => {
     await setRoute(service, b.id, [{ level: 1, stationId: stations[1].id, code: 'BBB111' }])
     await setGameStatus(service, 'live')
 
-    expect((await view('ALPHA1')).cards[0].location).toBe('Station 1')
-    expect((await view('BETA22')).cards[0].location).toBe('Station 2')
+    // Each team gets the clue for its own stop, and neither is told any location.
+    expect((await view('ALPHA1')).cards[0].clue).toBe('Clue leading to station 1')
+    expect((await view('BETA22')).cards[0].clue).toBe('Clue leading to station 2')
+    expect((await view('ALPHA1')).cards[0].location).toBeNull()
+    expect(JSON.stringify(await view('ALPHA1'))).not.toContain('Station 2')
   })
 
   it('hides clue text for locked levels', async () => {
