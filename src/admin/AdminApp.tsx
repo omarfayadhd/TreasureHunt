@@ -3,7 +3,7 @@ import { NavLink, Route, Routes } from 'react-router-dom'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabaseClient'
 import AdminLogin from './AdminLogin'
-import LiveBoard from './LiveBoard'
+import Dashboard from './Dashboard'
 import TeamsPanel from './TeamsPanel'
 import StationsPanel from './StationsPanel'
 import GameControl from './GameControl'
@@ -29,7 +29,7 @@ export default function AdminApp() {
     <div className="admin">
       <nav className="admin-nav">
         <span className="admin-brand">🗺️ Hunt Admin</span>
-        <NavLink to="/admin" end>Live board</NavLink>
+        <NavLink to="/admin" end>Dashboard</NavLink>
         <NavLink to="/admin/teams">Teams</NavLink>
         <NavLink to="/admin/stations">Stations</NavLink>
         <NavLink to="/admin/control">Game control</NavLink>
@@ -38,7 +38,7 @@ export default function AdminApp() {
       </nav>
       <main className="admin-main">
         <Routes>
-          <Route index element={<LiveBoard />} />
+          <Route index element={<Dashboard />} />
           <Route path="teams" element={<TeamsPanel />} />
           <Route path="stations" element={<StationsPanel />} />
           <Route path="control" element={<GameControl />} />
