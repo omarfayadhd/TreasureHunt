@@ -10,6 +10,8 @@ vi.mock('./adminApi', () => ({
   createTeam: vi.fn(),
   updateTeamName: vi.fn(),
   regenerateTeamCode: vi.fn(),
+  setDemoTeam: vi.fn(),
+  resetDemoTeam: vi.fn(),
   deleteTeam: vi.fn(),
   generateTeams: vi.fn(),
   refusal: (result: unknown) =>
@@ -32,6 +34,8 @@ function row(overrides: Partial<MonitorRow>): MonitorRow {
   return {
     current_location: null,
     too_late_at: null,
+    is_demo: false,
+    demo_won_at: null,
     id: 'team-1',
     name: 'Mongooses',
     team_code: 'TIGER42',
@@ -167,5 +171,38 @@ describe('TeamsPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: /generate teams/i }))
     expect(await screen.findByText(/between 1 and 50/i)).toBeInTheDocument()
     expect(adminApi.generateTeams).not.toHaveBeenCalled()
+  })
+})
+
+describe('TeamsPanel demo team', () => {
+  it('marks the demo team and lets another team take the role', async () => {
+    vi.mocked(adminApi.fetchMonitor).mockResolvedValue([
+      row({ id: 'team-1', name: 'Mongooses' }),
+      row({ id: 'team-2', name: 'Demo', team_code: 'DEMO11', is_demo: true }),
+    ])
+    vi.mocked(adminApi.setDemoTeam).mockResolvedValue({ ok: true })
+    render(<TeamsPanel />)
+
+    const demoRow = (await screen.findByText('Demo')).closest('tr')!
+    expect(demoRow).toHaveTextContent(/demo/i)
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Make Mongooses the demo team' }),
+    )
+    await waitFor(() => expect(adminApi.setDemoTeam).toHaveBeenCalledWith('team-1', true))
+  })
+
+  it('replays the demo run, even mid-hunt', async () => {
+    vi.mocked(adminApi.fetchMonitor).mockResolvedValue([
+      row({ id: 'team-2', name: 'Demo', team_code: 'DEMO11', is_demo: true, demo_won_at: '2026-08-20T10:00:00Z' }),
+    ])
+    vi.mocked(adminApi.fetchGame).mockResolvedValue({ ...setupGame, status: 'live' })
+    vi.mocked(adminApi.resetDemoTeam).mockResolvedValue({ ok: true })
+    render(<TeamsPanel />)
+
+    const button = await screen.findByRole('button', { name: /reset demo run/i })
+    // Deliberately NOT disabled while the hunt is live: demoing mid-game is the point.
+    expect(button).toBeEnabled()
+    await userEvent.click(button)
+    await waitFor(() => expect(adminApi.resetDemoTeam).toHaveBeenCalled())
   })
 })

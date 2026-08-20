@@ -3,6 +3,7 @@ import {
   fetchGame, fetchMonitor, fetchRoutes, fetchStations,
   type GameRow, type MonitorRow, type RouteCell, type StationRow,
 } from './adminApi'
+import { ChestSprite } from '../player/sprites'
 
 export default function PrintPage() {
   const [stations, setStations] = useState<StationRow[]>([])
@@ -59,8 +60,10 @@ export default function PrintPage() {
       {treasure && game?.treasure_code && (
         <section className="print-section">
           <h3 className="print-heading">Post at: {treasure.name}</h3>
-          <div className="print-card">
-            <p className="print-eyebrow">🗺️ Treasure Hunt · THE TREASURE</p>
+          {/* The one slip that decides the hunt, so it is dressed for it. */}
+          <div className="print-card print-treasure">
+            <p className="print-eyebrow">❈ THE TREASURE ❈</p>
+            <ChestSprite className="sprite sprite-xl" />
             <p className="print-code">{game.treasure_code}</p>
             <p className="print-small">
               One code for every team. The first team to send it wins; everyone after is told it is

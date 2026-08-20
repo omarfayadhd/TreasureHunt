@@ -18,6 +18,10 @@ export type Race = { level: number; found: number; teams: number }
 export type TeamView = {
   ok: true
   team_name: string
+  /** The demo team: plays for real, but never takes the treasure. */
+  demo: boolean
+  /** This demo run reached the treasure — celebrate, claim nothing. */
+  demo_won: boolean
   game_status: GameStatus
   status: TeamStatus
   cleared: number

@@ -11,7 +11,11 @@ export default function PlayerApp() {
   if (!game.view) return <LoginScreen onLogin={game.login} error={game.loginError} busy={game.busy} />
 
   const view = game.view
-  if (view.status === 'winner' || view.status === 'finished') return <FinishedScreen view={view} />
+  // A demo run reaching the treasure gets the same screen, marked as a demo: the
+  // point is to show colleagues exactly what winning looks like.
+  if (view.status === 'winner' || view.status === 'finished' || view.demo_won) {
+    return <FinishedScreen view={view} />
+  }
   if (view.game_status !== 'live') return <WaitingScreen status={view.game_status} teamName={view.team_name} />
   return (
     <CardGrid

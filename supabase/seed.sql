@@ -63,6 +63,13 @@ where u.email = 'admin@test.local'
 insert into public.stations (name, clue_text, sort_order)
 select v.name, v.clue_text, v.sort_order
 from (values
+  ('Loading bay', $clue$Where the vans back in and nothing stays long.
+
+Look for the number *painted* on the floor.
+
+---
+
+**Which door swallows the boxes?**$clue$, 5),
   ('Reception desk', $clue$Two things **begin** your journey:
 
 A letter that follows R,
@@ -103,13 +110,17 @@ and not one of them is cheering.
 ) as v(name, clue_text, sort_order)
 where not exists (select 1 from public.stations);
 
-insert into public.teams (name, team_code)
-select v.name, v.team_code
+-- Three real teams plus a permanent demo team. The demo plays exactly like the
+-- others, but its treasure submit only ever celebrates: it never takes the
+-- treasure, so you can show a colleague the whole run mid-hunt.
+insert into public.teams (name, team_code, is_demo)
+select v.name, v.team_code, v.is_demo
 from (values
-  ('Owls', 'OWLS11'),
-  ('Mongooses', 'MONG22'),
-  ('Foxes', 'FOXX33')
-) as v(name, team_code)
+  ('Owls', 'OWLS11', false),
+  ('Mongooses', 'MONG22', false),
+  ('Foxes', 'FOXX33', false),
+  ('Demo team', 'DEMO11', true)
+) as v(name, team_code, is_demo)
 where not exists (select 1 from public.teams);
 
 -- Two staggered legs each: no two teams are at the same place at the same level,
@@ -123,7 +134,9 @@ from (values
   ('Mongooses', 1, 'Kitchen fridge', 'KITCH4'),
   ('Mongooses', 2, 'Fire stairwell', 'STAIR5'),
   ('Foxes',     1, 'Fire stairwell', 'STAIR7'),
-  ('Foxes',     2, 'Reception desk', 'RECEP9')
+  ('Foxes',     2, 'Loading bay',    'LOADB8'),
+  ('Demo team', 1, 'Loading bay',    'LOADB1'),
+  ('Demo team', 2, 'Reception desk', 'RECEP9')
 ) as v(team_name, level, station_name, code)
 join public.teams t on t.name = v.team_name
 join public.stations s on s.name = v.station_name

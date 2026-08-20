@@ -52,6 +52,8 @@ function monitorRow(overrides: Partial<MonitorRow>): MonitorRow {
     wrong_count: 0,
     current_location: null,
     too_late_at: null,
+    is_demo: false,
+    demo_won_at: null,
     ...overrides,
   }
 }

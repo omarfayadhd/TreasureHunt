@@ -41,6 +41,12 @@ Postgres `SECURITY DEFINER` RPCs — players never get direct table access.
 - A code isn't consumed by being used — any number of teams can clear their
   own level `L`, in any order, at any time. No team is ever blocked, timed
   out, or knocked out of the hunt.
+- **One demo team, which can never win.** A team flagged `is_demo` plays exactly
+  like the others — own legs, own codes, same clue sheets — but its treasure
+  submit only ever celebrates: no winner, no claim, and the real treasure stays
+  out there. Its run rewinds from the Teams page at any time, including mid-hunt,
+  and it is left out of the race counts and the kickoff snapshot so a demo never
+  looks to a player like a rival closing in.
 - **The first team to send the treasure code wins, and nobody else can.** A team
   that reaches an already-claimed treasure is told "The treasure was already
   claimed", does not advance, and there is no second place — no placings appear
@@ -83,7 +89,8 @@ opening the admin:
 |------|------|---------|---------|-------------------|
 | Owls | `OWLS11` | Reception desk `RECEP1` | Kitchen fridge `KITCH2` | Server cupboard `TREAS9` |
 | Mongooses | `MONG22` | Kitchen fridge `KITCH4` | Fire stairwell `STAIR5` | Server cupboard `TREAS9` |
-| Foxes | `FOXX33` | Fire stairwell `STAIR7` | Reception desk `RECEP9` | Server cupboard `TREAS9` |
+| Foxes | `FOXX33` | Fire stairwell `STAIR7` | Loading bay `LOADB8` | Server cupboard `TREAS9` |
+| Demo team | `DEMO11` | Loading bay `LOADB1` | Reception desk `RECEP9` | Server cupboard `TREAS9` |
 
 The game is left in `setup`, so press **Start hunt** on Game control first.
 Typing another team's code (say `KITCH4` as Owls) is the quickest way to see a
@@ -123,7 +130,9 @@ well-known local keys.
 ## Game-day runbook
 
 1. **Teams tab** — generate teams by count (or add them one at a time); each
-   gets a secret team code.
+   gets a secret team code. **Make demo** turns one of them into the demo team
+   (the flag moves rather than duplicating); **Reset demo run** rewinds it, live
+   game or not.
 2. **Stations tab, Locations list** — create the pool of places: a name and
    the clue that leads *to* it. No codes and no levels here. Add at least as
    many locations as you have teams.
@@ -139,7 +148,7 @@ well-known local keys.
    refuses a pick that would put two teams in the same place at the same
    level, or send one team to the same place twice. The grid lists what is
    still missing (empty cells, uneven route lengths, too few locations).
-5. **Print tab** — one sheet per location, holding one slip per team that
+5. **Print tab** — a parchment-and-gold treasure slip, one sheet per location, holding one slip per team that
    visits it (post them side by side at that place), then team login slips to
    hand out, then a per-team master sheet for you — **admin copy, don't hand
    it out**.
@@ -148,7 +157,9 @@ well-known local keys.
    one staggered location per team beyond the treasure. Players then open the site, enter their team code, and each team's
    own level 1 is unlocked.
    Watch the **dashboard** — the "Hunting" column names the location each team
-   is looking for right now, the treasure included. Scratching a card and submitting a code is always
+   is looking for right now, the treasure included; the demo team is badged
+   `DEMO` and never reads as a winner. A winning team gets confetti and a short
+   synthesised fanfare (muted for reduced-motion, with a mute toggle). Scratching a card and submitting a code is always
    recorded server-side, so the board reflects exactly what happened, in
    order. Nobody is eliminated — a stalled team just shows a stale "last
    code" time and a rising miss count; go help them in person.
