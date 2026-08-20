@@ -16,6 +16,7 @@ function team(id: string, name: string, code: string): MonitorRow {
     cleared_level: 0, out_at_level: null, finished_at: null, eliminated_at: null,
     created_at: '2026-08-17T09:00:00Z', started: false, max_opened_level: null,
     last_solve_at: null, wrong_count: 0, current_location: null, too_late_at: null,
+    is_demo: false, demo_won_at: null,
   }
 }
 
@@ -94,9 +95,15 @@ describe('PrintPage treasure', () => {
     })
     render(<PrintPage />)
 
-    expect(await screen.findByText(/· THE TREASURE/)).toBeInTheDocument()
+    expect(await screen.findByText(/THE TREASURE/)).toBeInTheDocument()
     expect(screen.getByText(/post at: vault/i)).toBeInTheDocument()
     // One slip for the whole field, plus the line on the admin master sheet.
     expect(screen.getAllByText('TREAS9')).toHaveLength(2)
+    // Dressed as treasure, not a plain slip.
+    const slip = screen.getAllByText('TREAS9')
+      .map(node => node.closest('.print-card'))
+      .find((card): card is HTMLElement => card?.classList.contains('print-treasure') ?? false)!
+    expect(slip).toHaveClass('print-treasure')
+    expect(slip.querySelector('[data-sprite="chest"]')).toBeTruthy()
   })
 })

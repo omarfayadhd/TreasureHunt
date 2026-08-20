@@ -18,6 +18,8 @@ function view(overrides: Partial<TeamView> = {}): TeamView {
   return {
     ok: true,
     team_name: 'Team 1',
+    demo: false,
+    demo_won: false,
     game_status: 'live',
     status: 'playing',
     cleared: 1,
@@ -199,5 +201,20 @@ describe('the claimed treasure', () => {
     expect(await screen.findByText(/treasure found/i)).toBeInTheDocument()
     // One winner, no placings: nothing on screen should read as an ordinal.
     expect(screen.queryByText(/\b1st\b|\b2nd\b|\b3rd\b|finished 1/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('the demo team', () => {
+  it('celebrates a demo win without claiming anything', async () => {
+    await loginAs(view({ status: 'playing', demo: true, demo_won: true, cleared: 2, total: 3 }))
+    expect(await screen.findByText(/treasure found/i)).toBeInTheDocument()
+    // Clearly labelled, so nobody watching thinks the real hunt is over.
+    expect(screen.getByText(/demo run complete/i)).toBeInTheDocument()
+    expect(screen.getByText(/still out there for the real hunt/i)).toBeInTheDocument()
+  })
+
+  it('plays the demo like any other team until the treasure', async () => {
+    await loginAs(view({ demo: true, demo_won: false }))
+    expect(await screen.findByLabelText(/enter code/i)).toBeInTheDocument()
   })
 })

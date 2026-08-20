@@ -436,6 +436,50 @@ code {
 }
 .print-clues { text-align: left; margin: 0.5rem 0 0; padding-left: 1.2rem; line-height: 1.5; }
 .print-clues code { font-family: var(--font-mono); font-weight: 700; }
+/* The treasure slip: the one page that decides the hunt, so it gets the
+   parchment-and-gold treatment rather than the plain dashed card. print-color-adjust
+   keeps the background when it goes to paper — browsers strip backgrounds otherwise. */
+.print-treasure {
+  border: 3px double #a07d1e;
+  background:
+    radial-gradient(ellipse at 50% 35%, rgba(255, 252, 240, 0.9), rgba(255, 252, 240, 0) 60%),
+    linear-gradient(160deg, #f0e6c6 0%, #e3d4a6 50%, #d3bf88 100%);
+  box-shadow: inset 0 0 0 6px rgba(160, 125, 30, 0.18);
+  color: #2a1f0c;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.print-treasure .print-eyebrow {
+  color: #7a5c12; font-family: var(--font-display); font-size: 0.62rem; letter-spacing: 0.14em;
+}
+.print-treasure .print-code {
+  font-size: 3rem; color: #22190a;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+.print-treasure .print-small { color: #5c4718; }
+.print-treasure .sprite-xl { margin: 0.25rem auto 0; display: block; }
+
+/* Win celebration */
+.confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 40; }
+.mute-toggle {
+  position: fixed; top: 0.75rem; right: 0.75rem; z-index: 41;
+  background: rgba(0, 0, 0, 0.45); color: var(--ink); border: 1px solid var(--line);
+  font-family: var(--font-display); font-size: 0.5rem; padding: 0.45rem 0.6rem; cursor: pointer;
+}
+.win-title {
+  animation: win-pop 700ms ease-out both;
+  text-shadow: 0 0 12px rgba(255, 212, 0, 0.55);
+}
+@keyframes win-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); }
+}
+.demo-badge {
+  font-family: var(--font-display); font-size: 0.5rem; padding: 0.15rem 0.35rem;
+  background: var(--accent-2); color: #1a1400;
+}
+
 @media print {
   .admin-nav, .no-print { display: none !important; }
   .admin-main { max-width: none; padding: 0; }

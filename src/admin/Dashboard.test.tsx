@@ -22,6 +22,8 @@ function row(overrides: Partial<MonitorRow>): MonitorRow {
     wrong_count: 0,
     current_location: null,
     too_late_at: null,
+    is_demo: false,
+    demo_won_at: null,
     ...overrides,
   }
 }
@@ -105,5 +107,18 @@ describe('Dashboard endgame', () => {
     expect(screen.getByText('Owls').closest('tr')).toHaveTextContent(/winner/i)
     expect(screen.getByText('Foxes').closest('tr')).toHaveTextContent(/too late/i)
     expect(screen.getByText('Mongooses').closest('tr')).toHaveTextContent(/playing/i)
+  })
+})
+
+describe('Dashboard demo team', () => {
+  it('labels the demo team and never counts it as a winner', () => {
+    mount([
+      row({ name: 'Owls', status: 'winner', cleared_level: 3 }),
+      row({ name: 'Demo', is_demo: true, demo_won_at: '2026-08-20T10:00:00Z', cleared_level: 2 }),
+    ])
+    const demoRow = screen.getByText('Demo').closest('tr')!
+    expect(demoRow).toHaveTextContent(/DEMO/)
+    expect(demoRow).toHaveTextContent(/demo run done/i)
+    expect(demoRow).not.toHaveTextContent(/winner/i)
   })
 })

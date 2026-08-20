@@ -19,6 +19,10 @@ export type MonitorRow = {
   current_location: string | null
   /** When this team reached a treasure somebody else had already claimed. */
   too_late_at: string | null
+  /** The demo team: plays for real, never takes the treasure. */
+  is_demo: boolean
+  /** When this demo run last reached the treasure. */
+  demo_won_at: string | null
 }
 
 export async function fetchMonitor(): Promise<MonitorRow[]> {
@@ -69,6 +73,13 @@ export const deleteTeam = (id: string): Promise<AdminRpcResult> =>
 
 export const generateTeams = (count: number): Promise<AdminRpcResult> =>
   adminRpc('generate_teams', { p_count: count })
+
+// The demo team plays exactly like a real one; only its finish is different, and
+// its run can be rewound at any time — including mid-hunt, which is the point.
+export const setDemoTeam = (id: string, isDemo: boolean): Promise<AdminRpcResult> =>
+  adminRpc('set_demo_team', { p_team_id: id, p_is_demo: isDemo })
+
+export const resetDemoTeam = (): Promise<AdminRpcResult> => adminRpc('reset_demo_team')
 
 /** A location: a place with a clue. Codes and levels live per team, in `team_stations`. */
 export type StationRow = {

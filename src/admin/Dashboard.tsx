@@ -48,7 +48,10 @@ export default function Dashboard() {
                   : undefined
                 }
               >
-                <td>{row.name}</td>
+                <td>
+                  {row.name}
+                  {row.is_demo && <span className="demo-badge"> DEMO</span>}
+                </td>
                 <td>{row.current_location ?? '—'}</td>
                 <td>{row.started ? 'Started' : 'Not started'}</td>
                 <td>{row.max_opened_level ?? '—'}</td>
@@ -57,7 +60,9 @@ export default function Dashboard() {
                   {/* One treasure, one winner. A team with too_late_at reached it
                       after somebody else had claimed it — it is still playing, and
                       still knows nothing. */}
-                  {row.status === 'winner'
+                  {row.is_demo
+                    ? row.demo_won_at ? 'Demo run done' : 'Demo'
+                    : row.status === 'winner'
                     ? 'Winner'
                     : row.too_late_at
                       ? 'Too late'

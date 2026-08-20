@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import {
   createTeam, deleteTeam, fetchGame, fetchMonitor, generateTeams, refusal, regenerateTeamCode,
-  updateTeamName, type AdminRpcResult, type MonitorRow,
+  resetDemoTeam, setDemoTeam, updateTeamName, type AdminRpcResult, type MonitorRow,
 } from './adminApi'
 import { comparePlacement } from '../lib/rounds'
 
@@ -133,7 +133,7 @@ export default function TeamsPanel() {
       {error && <p className="msg msg-bad" role="alert">{error}</p>}
       <table className="board-table">
         <thead>
-          <tr><th>Team</th><th>Team code</th><th>Progress</th><th>Actions</th></tr>
+          <tr><th>Team</th><th>Team code</th><th>Progress</th><th>Demo</th><th>Actions</th></tr>
         </thead>
         <tbody>
           {teams.map(team => (
@@ -164,6 +164,27 @@ export default function TeamsPanel() {
               <td>
                 {team.cleared_level}
                 {(team.status === 'winner' || team.status === 'finished') ? ' 🏆' : ''}
+              </td>
+              <td>
+                {team.is_demo ? (
+                  <>
+                    <span className="demo-badge">DEMO</span>{' '}
+                    {/* Never disabled by a running hunt: replaying the demo for a
+                        colleague mid-game touches nothing real. */}
+                    <button className="link-btn" onClick={() => run(() => resetDemoTeam())}>
+                      Reset demo run
+                    </button>
+                    {team.demo_won_at && <span className="hint"> · reached the treasure</span>}
+                  </>
+                ) : (
+                  <button
+                    className="link-btn"
+                    aria-label={`Make ${team.name} the demo team`}
+                    onClick={() => run(() => setDemoTeam(team.id, true))}
+                  >
+                    Make demo
+                  </button>
+                )}
               </td>
               <td>
                 <button
