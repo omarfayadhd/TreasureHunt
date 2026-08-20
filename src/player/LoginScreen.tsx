@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import ChestIcon from './ChestIcon'
+import { ChestSprite } from './sprites'
 
 type Props = {
   onLogin: (code: string) => void
@@ -18,7 +18,7 @@ export default function LoginScreen({ onLogin, error, busy }: Props) {
   return (
     <div className="player-screen login-screen">
       <div className="login-card">
-        <div className="brand-badge" aria-hidden="true"><ChestIcon /></div>
+        <div className="brand-badge" aria-hidden="true"><ChestSprite className="sprite sprite-xl" /></div>
         <h1>Welcome</h1>
         <form onSubmit={handleSubmit} className="code-form">
           <div className="float-field">
