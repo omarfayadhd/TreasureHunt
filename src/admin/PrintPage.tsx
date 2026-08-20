@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react'
-import { fetchBoard, fetchStations, type BoardRow, type StationRow } from './adminApi'
+import { fetchMonitor, fetchStations, type MonitorRow, type StationRow } from './adminApi'
 
 export default function PrintPage() {
   const [stations, setStations] = useState<StationRow[]>([])
-  const [teams, setTeams] = useState<BoardRow[]>([])
+  const [teams, setTeams] = useState<MonitorRow[]>([])
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchStations()
       .then(setStations)
       .catch(e => setError(e instanceof Error ? e.message : String(e)))
-    fetchBoard()
+    fetchMonitor()
       .then(rows => setTeams([...rows].sort((a, b) => a.name.localeCompare(b.name))))
       .catch(e => setError(e instanceof Error ? e.message : String(e)))
   }, [])
+
+  const maxLevel = stations.length ? Math.max(...stations.map(s => s.sort_order)) : 0
 
   return (
     <div className="print-page">
@@ -27,7 +29,7 @@ export default function PrintPage() {
         {stations.map(station => (
           <div className="print-card" key={station.id}>
             <p className="print-eyebrow">
-              🗺️ Treasure Hunt{station.is_final ? ' · FINAL TREASURE' : ''}
+              🗺️ Treasure Hunt · Level {station.sort_order}{station.sort_order === maxLevel ? ' · FINAL TREASURE' : ''}
             </p>
             <p className="print-code">{station.code}</p>
             <p className="print-small">Post at: {station.name}</p>

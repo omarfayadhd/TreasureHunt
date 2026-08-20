@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import {
-  createStation, deleteStation, fetchGame, fetchStations, makeFinal, swapOrder, updateStation,
+  createStation, deleteStation, fetchGame, fetchStations, swapOrder, updateStation,
   type StationRow,
 } from './adminApi'
 import { generateCode } from '../lib/codes'
 
 type Draft = { name: string; clue_text: string; code: string }
+
+const CODE = /^[A-Z0-9]{3,12}$/
+
+function normalizeCode(raw: string): string {
+  return raw.trim().toUpperCase()
+}
 
 export default function StationsPanel() {
   const [stations, setStations] = useState<StationRow[]>([])
@@ -40,12 +46,18 @@ export default function StationsPanel() {
   function handleCreate(event: FormEvent) {
     event.preventDefault()
     if (!name.trim() || !clue.trim() || !code.trim()) return
+    const normalizedCode = normalizeCode(code)
+    if (!CODE.test(normalizedCode)) {
+      setError('Codes are letters and numbers only, 3–12 characters.')
+      return
+    }
+    setError(null)
     const nextOrder = stations.length ? Math.max(...stations.map(s => s.sort_order)) + 1 : 1
     run(() =>
       createStation({
         name: name.trim(),
         clue_text: clue.trim(),
-        code: code.trim().toUpperCase(),
+        code: normalizedCode,
         sort_order: nextOrder,
       }),
     )
@@ -60,21 +72,35 @@ export default function StationsPanel() {
   }
 
   function saveEdit(id: string) {
+    const normalizedCode = normalizeCode(draft.code)
+    if (!CODE.test(normalizedCode)) {
+      setError('Codes are letters and numbers only, 3–12 characters.')
+      return
+    }
+    setError(null)
     run(() =>
       updateStation(id, {
         name: draft.name.trim(),
         clue_text: draft.clue_text.trim(),
-        code: draft.code.trim().toUpperCase(),
+        code: normalizedCode,
       }),
     )
     setEditingId(null)
   }
+
+  const levels = stations.map(s => s.sort_order)
+  const minLevel = levels.length ? Math.min(...levels) : 1
+  const maxLevel = levels.length ? Math.max(...levels) : 0
+  const hasGap = stations.length > 0 && (minLevel !== 1 || maxLevel !== stations.length)
 
   return (
     <section className="card">
       <h2>Stations</h2>
       {gameRunning && (
         <p className="msg msg-warn">The hunt is live — editing stations now can confuse teams mid-route.</p>
+      )}
+      {hasGap && (
+        <p className="msg msg-warn">Levels must run 1 to {stations.length} with no gaps.</p>
       )}
       <form onSubmit={handleCreate} className="inline-form">
         <div>
@@ -94,7 +120,7 @@ export default function StationsPanel() {
       {error && <p className="msg msg-bad" role="alert">{error}</p>}
       <table className="board-table">
         <thead>
-          <tr><th>Order</th><th>Station</th><th>Clue</th><th>Code</th><th>Final?</th><th>Actions</th></tr>
+          <tr><th>Level</th><th>Station</th><th>Clue</th><th>Code</th><th>Actions</th></tr>
         </thead>
         <tbody>
           {stations.map((station, index) => (
@@ -121,7 +147,6 @@ export default function StationsPanel() {
                   <td><input aria-label="Edit name" value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} /></td>
                   <td><input aria-label="Edit clue" value={draft.clue_text} onChange={e => setDraft({ ...draft, clue_text: e.target.value })} /></td>
                   <td><input aria-label="Edit code" value={draft.code} onChange={e => setDraft({ ...draft, code: e.target.value })} /></td>
-                  <td>{station.is_final ? '🏆 Final' : ''}</td>
                   <td>
                     <button onClick={() => saveEdit(station.id)}>Save</button>{' '}
                     <button className="link-btn" onClick={() => setEditingId(null)}>Cancel</button>
@@ -132,17 +157,6 @@ export default function StationsPanel() {
                   <td>{station.name}</td>
                   <td>{station.clue_text}</td>
                   <td><code>{station.code}</code></td>
-                  <td>
-                    <label style={{ display: 'inline', fontWeight: 400 }}>
-                      <input
-                        type="radio"
-                        name="final-station"
-                        checked={station.is_final}
-                        onChange={() => run(() => makeFinal(station.id))}
-                      />{' '}
-                      {station.is_final ? '🏆 Final' : 'Set final'}
-                    </label>
-                  </td>
                   <td>
                     <button className="link-btn" onClick={() => startEdit(station)}>Edit</button>
                     <button
