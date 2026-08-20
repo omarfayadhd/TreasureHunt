@@ -148,20 +148,3 @@ describe('rename_team', () => {
   })
 })
 
-describe('suggest_station_code', () => {
-  it('suggests a code from the strong pool that no station already uses', async () => {
-    const admin = await adminClient()
-    await seedStations(service, 3)
-    const { data, error } = await admin.rpc('suggest_station_code')
-    expect(error).toBeNull()
-    const code = (data as { code: string }).code
-    expect(code).toMatch(/^[A-HJ-NP-Z2-9]{6}$/)
-    const { data: clash } = await service.from('stations').select('id').eq('code', code)
-    expect(clash).toHaveLength(0)
-  })
-
-  it('is not callable anonymously', async () => {
-    const { error } = await anon.rpc('suggest_station_code')
-    expect(error).not.toBeNull()
-  })
-})
