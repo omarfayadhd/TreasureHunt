@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import {
-  createStation, deleteStation, fetchGame, fetchStations, swapOrder, updateStation,
+  createStation, deleteStation, fetchGame, fetchStations, refusal, swapOrder, updateStation,
   type StationRow,
 } from './adminApi'
 import { generateCode } from '../lib/codes'
@@ -11,6 +11,17 @@ const CODE = /^[A-Z0-9]{3,12}$/
 
 function normalizeCode(raw: string): string {
   return raw.trim().toUpperCase()
+}
+
+function refusalMessage(error: string): string {
+  switch (error) {
+    case 'game_running':
+      return 'The hunt is running — end it or reset progress before changing the level ladder.'
+    case 'not_found':
+      return 'That station is no longer there — the list has been refreshed.'
+    default:
+      return `Error: ${error}`
+  }
 }
 
 export default function StationsPanel() {
@@ -36,7 +47,8 @@ export default function StationsPanel() {
   async function run(action: () => Promise<unknown>) {
     setError(null)
     try {
-      await action()
+      const refused = refusal(await action())
+      if (refused) setError(refusalMessage(refused))
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))

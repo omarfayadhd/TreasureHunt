@@ -11,6 +11,10 @@ vi.mock('./adminApi', () => ({
   deleteStation: vi.fn(),
   swapOrder: vi.fn(),
   fetchGame: vi.fn(),
+  refusal: (result: unknown) =>
+    result && typeof result === 'object' && 'ok' in result && (result as { ok: boolean }).ok === false
+      ? ((result as { error?: string }).error ?? 'unknown')
+      : null,
 }))
 
 vi.mock('../lib/codes', () => ({ generateCode: () => 'AUTO11' }))
@@ -99,6 +103,35 @@ describe('StationsPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: /add station/i }))
     expect(await screen.findByText(/letters and numbers only/i)).toBeInTheDocument()
     expect(adminApi.createStation).not.toHaveBeenCalled()
+  })
+
+  it('reorders a level through the server-side swap', async () => {
+    vi.mocked(adminApi.fetchStations).mockResolvedValue([
+      station({}),
+      station({ id: 'station-2', name: 'Treasure spot', code: 'GOLD99', sort_order: 2 }),
+    ])
+    vi.mocked(adminApi.swapOrder).mockResolvedValue({ ok: true })
+    render(<StationsPanel />)
+    const upButtons = await screen.findAllByRole('button', { name: '↑' })
+    await userEvent.click(upButtons[1])
+    await waitFor(() =>
+      expect(adminApi.swapOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'station-2' }),
+        expect.objectContaining({ id: 'station-1' }),
+      ),
+    )
+  })
+
+  it('surfaces the server refusal when reordering during a running hunt', async () => {
+    vi.mocked(adminApi.fetchStations).mockResolvedValue([
+      station({}),
+      station({ id: 'station-2', name: 'Treasure spot', code: 'GOLD99', sort_order: 2 }),
+    ])
+    vi.mocked(adminApi.swapOrder).mockResolvedValue({ ok: false, error: 'game_running' })
+    render(<StationsPanel />)
+    const upButtons = await screen.findAllByRole('button', { name: '↑' })
+    await userEvent.click(upButtons[1])
+    expect(await screen.findByText(/end it or reset progress/i)).toBeInTheDocument()
   })
 
   it('warns when levels are not contiguous from 1', async () => {

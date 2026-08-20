@@ -56,6 +56,17 @@ async function adminRpc(fn: string, args?: Record<string, unknown>): Promise<Adm
   return data as AdminRpcResult
 }
 
+/**
+ * Admin RPCs report refusals as `{ ok: false, error }` rather than throwing.
+ * Plain table writes resolve to `undefined`, so those always read as accepted.
+ */
+export function refusal(result: unknown): string | null {
+  if (result && typeof result === 'object' && 'ok' in result && (result as AdminRpcResult).ok === false) {
+    return (result as AdminRpcResult).error ?? 'unknown'
+  }
+  return null
+}
+
 export async function createTeam(name: string): Promise<void> {
   const { error } = await supabase.from('teams').insert({ name, team_code: generateCode() })
   if (error) throw error
@@ -119,12 +130,13 @@ export async function deleteStation(id: string): Promise<void> {
   if (error) throw error
 }
 
-export async function swapOrder(a: StationRow, b: StationRow): Promise<void> {
-  const { error: firstError } = await supabase.from('stations').update({ sort_order: b.sort_order }).eq('id', a.id)
-  if (firstError) throw firstError
-  const { error: secondError } = await supabase.from('stations').update({ sort_order: a.sort_order }).eq('id', b.id)
-  if (secondError) throw secondError
-}
+/**
+ * `sort_order` is uniquely constrained, so two separate UPDATEs always collide
+ * on the row still holding the target level. The swap happens server-side in
+ * one transaction instead.
+ */
+export const swapOrder = (a: StationRow, b: StationRow): Promise<AdminRpcResult> =>
+  adminRpc('swap_station_levels', { p_a: a.id, p_b: b.id })
 
 export type GameRow = {
   id: number
