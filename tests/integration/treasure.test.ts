@@ -86,13 +86,13 @@ describe('the shared treasure', () => {
     expect((await view('OWLS11')).cards[2].location).toBeNull()
   })
 
-  it('names the treasure on the final card once the legs are cleared', async () => {
+  it('unlocks the treasure clue once the legs are cleared, but not its location', async () => {
     const stations = await seedStations(service, 3)
     const { owls } = await twoTeamGame(stations)
     await walkToTreasure('OWLS11', owls.id, ['OWL111', 'OWL222'])
 
     const card = (await view('OWLS11')).cards[2]
-    expect(card).toMatchObject({ level: 3, unlocked: true, location: 'Station 3' })
+    expect(card).toMatchObject({ level: 3, unlocked: true, location: null })
     expect(card.clue).toBe('Clue leading to station 3')
   })
 
@@ -318,5 +318,52 @@ describe('treasure admin RPCs', () => {
     expect(await admin.rpc('set_route_cell', {
       p_team_id: owls.id, p_level: 2, p_station_id: stations[2].id,
     }).then(r => r.data)).toMatchObject({ ok: false, error: 'is_the_treasure' })
+  })
+})
+
+describe('the location a clue points to is never given away', () => {
+  it('withholds the location of the level a team is currently hunting', async () => {
+    const stations = await seedStations(service, 3)
+    await twoTeamGame(stations)
+
+    const card = (await view('OWLS11')).cards[0]
+    // The clue is the puzzle; the location is its answer, so only the clue ships.
+    expect(card).toMatchObject({ level: 1, unlocked: true, location: null })
+    expect(card.clue).toBe('Clue leading to station 1')
+    expect(JSON.stringify(await view('OWLS11'))).not.toContain('Station 1')
+  })
+
+  it('names a location only once the team has cleared it', async () => {
+    const stations = await seedStations(service, 3)
+    const { owls } = await twoTeamGame(stations)
+    await walkToTreasure('OWLS11', owls.id, ['OWL111'])
+
+    const cards = (await view('OWLS11')).cards
+    expect(cards[0]).toMatchObject({ level: 1, location: 'Station 1' })
+    expect(cards[1]).toMatchObject({ level: 2, unlocked: true, location: null })
+  })
+
+  it('never names the treasure before it is claimed', async () => {
+    const stations = await seedStations(service, 3)
+    const { owls } = await twoTeamGame(stations)
+    await walkToTreasure('OWLS11', owls.id, ['OWL111', 'OWL222'])
+
+    const onTheTreasure = await view('OWLS11')
+    expect(onTheTreasure.cards[2]).toMatchObject({ level: 3, unlocked: true, location: null })
+    expect(JSON.stringify(onTheTreasure)).not.toContain('Station 3')
+
+    await submit('OWLS11', 'TREAS9')
+    expect((await view('OWLS11')).cards[2]).toMatchObject({ location: 'Station 3' })
+  })
+
+  it('still leaks nothing to a team that hit a claimed treasure', async () => {
+    const stations = await seedStations(service, 3)
+    const { owls, mong } = await twoTeamGame(stations)
+    await walkToTreasure('OWLS11', owls.id, ['OWL111', 'OWL222'])
+    await submit('OWLS11', 'TREAS9')
+    await walkToTreasure('MONG22', mong.id, ['MON111', 'MON222'])
+    await submit('MONG22', 'TREAS9')
+
+    expect((await view('MONG22')).cards[2]).toMatchObject({ location: null })
   })
 })

@@ -27,7 +27,7 @@ function view(overrides: Partial<TeamView> = {}): TeamView {
     race: { level: 2, found: 1, teams: 3 },
     cards: [
       { level: 1, unlocked: true, opened: true, clue: 'Under the plant', location: 'Lobby' },
-      { level: 2, unlocked: true, opened: false, clue: 'Behind the fridge', location: 'Kitchen' },
+      { level: 2, unlocked: true, opened: false, clue: 'Behind the fridge', location: null },
       { level: 3, unlocked: false, opened: false, clue: null, location: null },
     ],
     ...overrides,
@@ -132,12 +132,13 @@ describe('PlayerApp', () => {
 })
 
 describe('per-team routes', () => {
-  it('names the location of each unlocked card and hides locked ones', async () => {
+  // A location is the answer to its clue, so the server sends it only for levels
+  // the team has already cleared. Level 2 is the one being hunted: clue, no place.
+  it('names a cleared location but never the one still being hunted', async () => {
     await loginAs(view())
     expect(await screen.findByText('Lobby')).toBeInTheDocument()
-    expect(screen.getByText('Kitchen')).toBeInTheDocument()
-    // The level 3 card is locked: neither its clue nor its location is sent.
-    expect(screen.queryByText(/vault/i)).not.toBeInTheDocument()
+    expect(screen.getByText('Behind the fridge')).toBeInTheDocument()
+    expect(screen.queryByText('Kitchen')).not.toBeInTheDocument()
   })
 
   it("says so when the code belongs to another team", async () => {
@@ -153,7 +154,7 @@ describe('clue sheet', () => {
   it('opens the styled clue sheet when a card is scratched', async () => {
     const scratched = view({
       cards: [
-        { level: 1, unlocked: true, opened: false, clue: 'Two things **begin** here', location: 'Lobby' },
+        { level: 1, unlocked: true, opened: false, clue: 'Two things **begin** here', location: null },
         { level: 2, unlocked: false, opened: false, clue: null, location: null },
       ],
       cleared: 0,
@@ -171,7 +172,7 @@ describe('clue sheet', () => {
 
   it('closes the clue sheet again', async () => {
     await loginAs(view({
-      cards: [{ level: 1, unlocked: true, opened: true, clue: 'Two things begin', location: 'Lobby' }],
+      cards: [{ level: 1, unlocked: true, opened: true, clue: 'Two things begin', location: null }],
       cleared: 0,
       total: 1,
     }))

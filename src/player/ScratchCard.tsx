@@ -143,6 +143,9 @@ export default function ScratchCard({ card, isCurrent, isFinal = false, onOpen, 
         {isFinal ? <FlagSprite className="sprite sprite-sm" /> : <CoinSprite className="sprite sprite-sm" />}
         {card.level}
       </span>
+      {/* Only ever set for a level this team has already cleared — the server
+          withholds the location of the level being hunted, since that is the
+          answer to the clue. */}
       {card.location && <p className="scratch-location">{card.location}</p>}
       <p className="scratch-clue">{card.clue}</p>
       {!showFoil && (
