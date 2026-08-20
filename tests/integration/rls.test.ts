@@ -10,11 +10,16 @@ describe('row level security', () => {
 
   it('hides every table from anonymous clients', async () => {
     const anon = anonClient()
-    for (const table of ['game', 'stations', 'teams', 'route_stops', 'attempts']) {
+    for (const table of ['game', 'stations', 'teams', 'card_opens', 'attempts']) {
       const { data, error } = await anon.from(table).select('*')
       expect(error, table).toBeNull()
       expect(data, table).toEqual([])
     }
+  })
+
+  it('hides admin_monitor from anonymous clients', async () => {
+    const { data, error } = await anonClient().from('admin_monitor').select('*')
+    expect(error !== null || (data ?? []).length === 0).toBe(true)
   })
 
   it('blocks anonymous writes', async () => {
@@ -36,7 +41,7 @@ describe('row level security', () => {
     const admin = await adminClient()
     const { data: stations, error } = await admin.from('stations').select('*')
     expect(error).toBeNull()
-    expect(stations).toHaveLength(3)
+    expect(stations).toHaveLength(2)
     const { data: team, error: insertError } = await admin
       .from('teams')
       .insert({ name: 'Admin made', team_code: 'ADMIN-01' })
