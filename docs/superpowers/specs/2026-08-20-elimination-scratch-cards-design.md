@@ -65,10 +65,11 @@ For `N` teams and `M = N` levels this produces exactly the intended shape:
 
 Mismatched counts still play, and admin is warned rather than blocked:
 
-- **Fewer levels than teams** (`M < N-1`): the treasure race has `alive - 1`
-  slots, so several teams claim the treasure and are placed by finish time.
-- **More levels than teams** (`M > N-1`): last-standing ends the game early and
-  the remaining cards go unused.
+- **Fewer levels than teams** (`M < N`): the treasure race has `alive - 1`
+  slots, so `N - M + 1` teams claim the treasure together and are placed by
+  finish time.
+- **More levels than teams** (`M > N`): last-standing ends the game at clue `N`
+  and the remaining cards go unused.
 
 `M = N` is the recommended setup and the admin dashboard says so.
 

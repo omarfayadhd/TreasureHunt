@@ -201,8 +201,8 @@ export function isUnlocked(level: number, cleared: number): boolean {
 export function setupWarning(levels: number, teams: number): string | null {
   if (levels === 0 || teams === 0) return null
   if (levels === teams) return null
-  if (levels < teams - 1) {
-    const finishers = teams - levels
+  if (levels < teams) {
+    const finishers = teams - levels + 1
     return `Only ${levels} clues for ${teams} teams — ${finishers} teams will claim the treasure together, placed by finish time.`
   }
   if (levels > teams) {
