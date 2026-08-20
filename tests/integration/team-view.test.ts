@@ -13,7 +13,7 @@ type View = {
   total: number
   place: number | null
   out_at_level: number | null
-  race: { level: number; slots: number; taken: number } | null
+  race: { level: number; found: number; teams: number } | null
   cards: Card[]
 }
 
@@ -67,52 +67,40 @@ describe('team_view', () => {
     expect((await view('ALPHA1')).cards.every(c => !c.unlocked)).toBe(true)
   })
 
-  it('reports the race with slots for the opening level', async () => {
+  it('reports the level being hunted with how many teams have cleared it', async () => {
     await seedStations(service, 3)
     await createTeam(service, 'Team 1', 'ALPHA1')
     await createTeam(service, 'Team 2', 'BETA22')
     await createTeam(service, 'Team 3', 'GAMMA3')
     await setGameStatus(service, 'live')
 
-    expect((await view('ALPHA1')).race).toEqual({ level: 1, slots: 3, taken: 0 })
+    expect((await view('ALPHA1')).race).toEqual({ level: 1, found: 0, teams: 3 })
   })
 
-  it('drops a slot for later races', async () => {
-    await seedStations(service, 3)
-    const a = await createTeam(service, 'Team 1', 'ALPHA1')
-    await createTeam(service, 'Team 2', 'BETA22')
-    await createTeam(service, 'Team 3', 'GAMMA3')
-    await setGameStatus(service, 'live')
-    await service.from('teams').update({ current_position: 1 }).eq('id', a.id)
-
-    expect((await view('ALPHA1')).race).toEqual({ level: 2, slots: 2, taken: 0 })
-  })
-
-  it('counts teams already through the current level', async () => {
+  it('counts teams already through the level being hunted', async () => {
     await seedStations(service, 3)
     const a = await createTeam(service, 'Team 1', 'ALPHA1')
     const b = await createTeam(service, 'Team 2', 'BETA22')
     await createTeam(service, 'Team 3', 'GAMMA3')
     await setGameStatus(service, 'live')
-    // A is through level 2; B is still racing it
     await service.from('teams').update({ current_position: 2 }).eq('id', a.id)
     await service.from('teams').update({ current_position: 1 }).eq('id', b.id)
 
-    expect((await view('BETA22')).race).toEqual({ level: 2, slots: 2, taken: 1 })
+    // B is hunting level 2; only A is through it
+    expect((await view('BETA22')).race).toEqual({ level: 2, found: 1, teams: 3 })
   })
 
-  it('marks opened cards and reports no race once eliminated', async () => {
+  it('marks opened cards and reports no race once finished', async () => {
     await seedStations(service, 3)
     const a = await createTeam(service, 'Team 1', 'ALPHA1')
     await setGameStatus(service, 'live')
     await service.from('card_opens').insert({ team_id: a.id, level: 1 })
-    await service.from('teams').update({ status: 'eliminated', out_at_level: 2, eliminated_at: new Date().toISOString() }).eq('id', a.id)
+    await service.from('teams').update({ status: 'finished', finished_at: new Date().toISOString() }).eq('id', a.id)
 
     const result = await view('ALPHA1')
     expect(result.cards[0].opened).toBe(true)
     expect(result.race).toBeNull()
-    expect(result.status).toBe('eliminated')
-    expect(result.out_at_level).toBe(2)
+    expect(result.status).toBe('finished')
     expect(result.place).toBe(1)
   })
 })

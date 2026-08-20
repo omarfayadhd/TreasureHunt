@@ -15,7 +15,7 @@ type Submit = {
   view?: {
     cleared: number
     status: string
-    race: { level: number; slots: number; taken: number } | null
+    race: { level: number; found: number; teams: number } | null
     cards: { level: number; unlocked: boolean; opened: boolean; clue: string | null }[]
   }
 }
@@ -79,75 +79,66 @@ describe('submit_code', () => {
     expect((data as { status: string }[]).every(t => t.status === 'playing')).toBe(true)
   })
 
-  it('eliminates the slowest team when a later race fills', async () => {
+  it('lets every team clear the same level', async () => {
     const { a, b, c } = await threeTeamGame()
-    for (const code of ['ALPHA1', 'BETA22', 'GAMMA3']) await submit(code, 'CODE1')
-    for (const id of [a.id, b.id, c.id]) await clearCooldown(service, id)
-
-    // Level 2 has 3 alive - 1 = 2 slots
-    await submit('ALPHA1', 'CODE2')
-    expect((await teamRow(c.id)).status).toBe('playing')
-    await submit('BETA22', 'CODE2')
-
-    expect((await teamRow(c.id))).toMatchObject({ status: 'eliminated', out_at_level: 2 })
-  })
-
-  it('refuses a submit from an eliminated team', async () => {
-    const { a, b, c } = await threeTeamGame()
-    for (const code of ['ALPHA1', 'BETA22', 'GAMMA3']) await submit(code, 'CODE1')
-    for (const id of [a.id, b.id, c.id]) await clearCooldown(service, id)
-    await submit('ALPHA1', 'CODE2')
-    await submit('BETA22', 'CODE2')
-
-    expect(await submit('GAMMA3', 'CODE2')).toMatchObject({ ok: false, error: 'not_playing' })
-  })
-
-  it('crowns the last team standing without needing the final card', async () => {
-    const { a, b, c } = await threeTeamGame()
-    for (const code of ['ALPHA1', 'BETA22', 'GAMMA3']) await submit(code, 'CODE1')
-    for (const id of [a.id, b.id, c.id]) await clearCooldown(service, id)
-    await submit('ALPHA1', 'CODE2')
-    await submit('BETA22', 'CODE2')  // C out
-    for (const id of [a.id, b.id]) await clearCooldown(service, id)
-
-    // Level 3 with 2 alive has 1 slot: A wins, B is swept
-    await submit('ALPHA1', 'CODE3')
-    expect((await teamRow(a.id)).status).toBe('winner')
-    expect((await teamRow(b.id))).toMatchObject({ status: 'eliminated', out_at_level: 3 })
-  })
-
-  it('lets a solo team play the whole ladder', async () => {
-    await seedStations(service, 3)
-    const solo = await createTeam(service, 'Solo', 'SOLO12')
-    await setGameStatus(service, 'live')
-    await service.from('game').update({ initial_team_count: 1 }).eq('id', 1)
-
-    for (const code of ['CODE1', 'CODE2', 'CODE3']) {
-      expect(await submit('SOLO12', code)).toMatchObject({ correct: true })
-      await clearCooldown(service, solo.id)
+    for (const code of ['ALPHA1', 'BETA22', 'GAMMA3']) {
+      expect(await submit(code, 'CODE1')).toMatchObject({ ok: true, correct: true })
     }
-    expect((await teamRow(solo.id))).toMatchObject({ status: 'winner', current_position: 3 })
+    for (const id of [a.id, b.id, c.id]) {
+      expect((await teamRow(id))).toMatchObject({ current_position: 1, status: 'playing' })
+    }
   })
 
-  it('places later finishers behind the winner when clues run short', async () => {
-    const stations = await seedStations(service, 1)
-    expect(stations).toHaveLength(1)
-    const a = await createTeam(service, 'Team 1', 'ALPHA1')
-    const b = await createTeam(service, 'Team 2', 'BETA22')
-    const c = await createTeam(service, 'Team 3', 'GAMMA3')
-    await setGameStatus(service, 'live')
-    await service.from('game').update({ initial_team_count: 3 }).eq('id', 1)
+  it('never eliminates anyone, however far apart the teams are', async () => {
+    const { a, b, c } = await threeTeamGame()
+    for (const code of ['CODE1', 'CODE2', 'CODE3']) {
+      await submit('ALPHA1', code)
+      await clearCooldown(service, a.id)
+    }
+    // A has claimed the treasure; B and C have not moved at all
+    expect((await teamRow(a.id)).status).toBe('winner')
+    for (const id of [b.id, c.id]) {
+      expect((await teamRow(id))).toMatchObject({ status: 'playing', current_position: 0, out_at_level: null })
+    }
+    const { data } = await service.from('teams').select('status').eq('status', 'eliminated')
+    expect(data).toEqual([])
+  })
 
-    // One level, 3 alive: the opening race fits everyone, so all three finish.
-    // Regression guard: counting only 'playing' teams as alive would shrink the
-    // pool as each team finishes and eliminate the last one instead.
-    await submit('ALPHA1', 'CODE1')
-    await submit('BETA22', 'CODE1')
-    await submit('GAMMA3', 'CODE1')
-
+  it('crowns the first finisher and places later ones behind it', async () => {
+    const { a, b, c } = await threeTeamGame()
+    for (const team of [['ALPHA1', a.id], ['BETA22', b.id]] as const) {
+      for (const code of ['CODE1', 'CODE2', 'CODE3']) {
+        await submit(team[0], code)
+        await clearCooldown(service, team[1])
+      }
+    }
     expect((await teamRow(a.id)).status).toBe('winner')
     expect((await teamRow(b.id)).status).toBe('finished')
-    expect((await teamRow(c.id)).status).toBe('finished')
+    expect((await teamRow(c.id)).status).toBe('playing')
+
+    const view = (await submit('GAMMA3', 'NOPE99')).view!
+    expect(view.status).toBe('playing')
+  })
+
+  it('refuses further submits from a finished team', async () => {
+    const { a } = await threeTeamGame()
+    for (const code of ['CODE1', 'CODE2', 'CODE3']) {
+      await submit('ALPHA1', code)
+      await clearCooldown(service, a.id)
+    }
+    expect(await submit('ALPHA1', 'CODE1')).toMatchObject({ ok: false, error: 'not_playing' })
+  })
+
+  it('lets two teams clear the same level simultaneously', async () => {
+    const { a, b } = await threeTeamGame()
+    await submit('ALPHA1', 'CODE1')
+    await submit('BETA22', 'CODE1')
+    for (const id of [a.id, b.id]) await clearCooldown(service, id)
+
+    const [first, second] = await Promise.all([submit('ALPHA1', 'CODE2'), submit('BETA22', 'CODE2')])
+    expect(first).toMatchObject({ ok: true, correct: true })
+    expect(second).toMatchObject({ ok: true, correct: true })
+    for (const id of [a.id, b.id]) expect((await teamRow(id)).current_position).toBe(2)
   })
 
   it('rejects submits while the game is paused', async () => {
@@ -162,19 +153,5 @@ describe('submit_code', () => {
     const second = await submit('ALPHA1', 'WRONG2')
     expect(second).toMatchObject({ ok: false, error: 'cooldown' })
     expect(second.retry_after_seconds as number).toBeGreaterThan(0)
-  })
-
-  it('serializes two teams racing for the last slot', async () => {
-    const { a, b, c } = await threeTeamGame()
-    for (const code of ['ALPHA1', 'BETA22', 'GAMMA3']) await submit(code, 'CODE1')
-    for (const id of [a.id, b.id, c.id]) await clearCooldown(service, id)
-    await submit('ALPHA1', 'CODE2')
-    for (const id of [b.id, c.id]) await clearCooldown(service, id)
-
-    // One slot left, two teams submit at once: exactly one gets it
-    const [first, second] = await Promise.all([submit('BETA22', 'CODE2'), submit('GAMMA3', 'CODE2')])
-    const outcomes = [first, second].map(r => (r.ok && r.correct ? 'through' : r.reason ?? r.error))
-    expect(outcomes.filter(o => o === 'through')).toHaveLength(1)
-    expect(outcomes.filter(o => o === 'too_late' || o === 'not_playing')).toHaveLength(1)
   })
 })
