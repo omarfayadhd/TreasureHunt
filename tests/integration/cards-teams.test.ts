@@ -58,15 +58,19 @@ describe('open_card', () => {
     expect(await openCard('ALPHA1', 1)).toMatchObject({ ok: false, error: 'game_not_live' })
   })
 
-  it('lets an eliminated team re-open a card it already had', async () => {
+  // Revision 2 can never produce 'eliminated'. A team that has finished is the
+  // reachable analogue: it stops submitting but should still be able to re-read
+  // the clues it earned.
+  it('lets a finished team re-open a card it already had', async () => {
     await seedStations(service, 3)
     const team = await createTeam(service, 'Team 1', 'ALPHA1')
     await setGameStatus(service, 'live')
     await service.from('teams')
-      .update({ status: 'eliminated', out_at_level: 1, eliminated_at: new Date().toISOString() })
+      .update({ status: 'finished', current_position: 3, finished_at: new Date().toISOString() })
       .eq('id', team.id)
 
     expect((await openCard('ALPHA1', 1)).ok).toBe(true)
+    expect((await openCard('ALPHA1', 3)).ok).toBe(true)
   })
 })
 
