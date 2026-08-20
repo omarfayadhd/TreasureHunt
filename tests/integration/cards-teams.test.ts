@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
-  adminClient, anonClient, createTeam, resetDb, seedStations, serviceClient, setGameStatus,
+  adminClient, anonClient, createTeam, resetDb, seedStations, serviceClient, setGameStatus, setRoute,
+  type SeededStation,
 } from './helpers'
 
 const service = serviceClient()
@@ -12,14 +13,24 @@ async function openCard(teamCode: string, level: number) {
   return data as { ok: boolean; error?: string; clue?: string; view?: { cards: { opened: boolean }[] } }
 }
 
+/** Straight route: level L is the Lth location, with this team's own codes. */
+function straightRoute(stations: SeededStation[], prefix: string) {
+  return stations.map((station, index) => ({
+    level: index + 1,
+    stationId: station.id,
+    code: `${prefix}${index + 1}${index + 1}${index + 1}`,
+  }))
+}
+
 beforeEach(async () => {
   await resetDb(service)
 })
 
 describe('open_card', () => {
   it('reveals an unlocked clue and records the open', async () => {
-    await seedStations(service, 3)
+    const stations = await seedStations(service, 3)
     const team = await createTeam(service, 'Team 1', 'ALPHA1')
+    await setRoute(service, team.id, straightRoute(stations, 'AAA'))
     await setGameStatus(service, 'live')
 
     const result = await openCard('ALPHA1', 1)
@@ -32,8 +43,9 @@ describe('open_card', () => {
   })
 
   it('is a no-op on a repeat scratch', async () => {
-    await seedStations(service, 3)
+    const stations = await seedStations(service, 3)
     const team = await createTeam(service, 'Team 1', 'ALPHA1')
+    await setRoute(service, team.id, straightRoute(stations, 'AAA'))
     await setGameStatus(service, 'live')
 
     await openCard('ALPHA1', 1)
@@ -43,8 +55,9 @@ describe('open_card', () => {
   })
 
   it('refuses a locked level and leaks no clue', async () => {
-    await seedStations(service, 3)
-    await createTeam(service, 'Team 1', 'ALPHA1')
+    const stations = await seedStations(service, 3)
+    const team = await createTeam(service, 'Team 1', 'ALPHA1')
+    await setRoute(service, team.id, straightRoute(stations, 'AAA'))
     await setGameStatus(service, 'live')
 
     const result = await openCard('ALPHA1', 3)
@@ -53,8 +66,9 @@ describe('open_card', () => {
   })
 
   it('refuses before the game is live', async () => {
-    await seedStations(service, 3)
-    await createTeam(service, 'Team 1', 'ALPHA1')
+    const stations = await seedStations(service, 3)
+    const team = await createTeam(service, 'Team 1', 'ALPHA1')
+    await setRoute(service, team.id, straightRoute(stations, 'AAA'))
     expect(await openCard('ALPHA1', 1)).toMatchObject({ ok: false, error: 'game_not_live' })
   })
 
@@ -62,8 +76,9 @@ describe('open_card', () => {
   // reachable analogue: it stops submitting but should still be able to re-read
   // the clues it earned.
   it('lets a finished team re-open a card it already had', async () => {
-    await seedStations(service, 3)
+    const stations = await seedStations(service, 3)
     const team = await createTeam(service, 'Team 1', 'ALPHA1')
+    await setRoute(service, team.id, straightRoute(stations, 'AAA'))
     await setGameStatus(service, 'live')
     await service.from('teams')
       .update({ status: 'finished', current_position: 3, finished_at: new Date().toISOString() })
@@ -71,6 +86,18 @@ describe('open_card', () => {
 
     expect((await openCard('ALPHA1', 1)).ok).toBe(true)
     expect((await openCard('ALPHA1', 3)).ok).toBe(true)
+  })
+
+  it("serves each team the clue from its own route", async () => {
+    const stations = await seedStations(service, 2)
+    const a = await createTeam(service, 'Team 1', 'ALPHA1')
+    const b = await createTeam(service, 'Team 2', 'BETA22')
+    await setRoute(service, a.id, [{ level: 1, stationId: stations[0].id, code: 'AAA111' }])
+    await setRoute(service, b.id, [{ level: 1, stationId: stations[1].id, code: 'BBB111' }])
+    await setGameStatus(service, 'live')
+
+    expect((await openCard('ALPHA1', 1)).clue).toBe('Clue leading to station 1')
+    expect((await openCard('BETA22', 1)).clue).toBe('Clue leading to station 2')
   })
 })
 
