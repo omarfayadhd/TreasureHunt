@@ -65,9 +65,20 @@ cp .env.example .env.local
 Then set `VITE_SUPABASE_URL=http://127.0.0.1:54321` and set
 `VITE_SUPABASE_ANON_KEY` to the anon key printed by `supabase status`.
 
-Create a local admin user: open http://127.0.0.1:54323 → Authentication →
-Add user (e.g. `admin@local.dev` / `local-admin-123`, auto-confirm), then sign
-in at `/admin`.
+`supabase db reset` also seeds a throwaway local game (never a hosted one):
+admin `admin@test.local` / `test-password-123`, three teams and four locations
+on staggered routes, with fixed codes so you can play on a phone without
+opening the admin:
+
+| Team | Code | Level 1 | Level 2 | Level 3 |
+|------|------|---------|---------|---------|
+| Owls | `OWLS11` | Reception desk `RECEP1` | Kitchen fridge `KITCH2` | Fire stairwell `STAIR3` |
+| Mongooses | `MONG22` | Kitchen fridge `KITCH4` | Fire stairwell `STAIR5` | Server cupboard `SERVE6` |
+| Foxes | `FOXX33` | Fire stairwell `STAIR7` | Server cupboard `SERVE8` | Reception desk `RECEP9` |
+
+The game is left in `setup`, so press **Start hunt** on Game control first.
+Typing another team's code (say `KITCH4` as Owls) is the quickest way to see
+the refusal. To get back to this state, run `supabase db reset` again.
 
 ## Tests
 
