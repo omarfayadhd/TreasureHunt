@@ -96,6 +96,16 @@ describe('the shared treasure', () => {
     expect(card.clue).toBe('Clue leading to station 3')
   })
 
+  it("still names another team's code as theirs when a team is on the treasure leg", async () => {
+    const stations = await seedStations(service, 3)
+    const { owls } = await twoTeamGame(stations)
+    await walkToTreasure('OWLS11', owls.id, ['OWL111', 'OWL222'])
+
+    // Owls are at the treasure. A code copied off Mongooses is not merely wrong.
+    expect(await submit('OWLS11', 'MON111'))
+      .toMatchObject({ ok: true, correct: false, reason: 'not_your_code' })
+  })
+
   it('refuses the treasure code while a leg is still unsolved', async () => {
     const stations = await seedStations(service, 3)
     const { owls } = await twoTeamGame(stations)

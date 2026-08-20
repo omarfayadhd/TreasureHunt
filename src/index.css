@@ -460,6 +460,13 @@ code {
 .print-treasure .sprite-xl { margin: 0.25rem auto 0; display: block; }
 
 /* Win celebration */
+/* The chest is a button so it can be tapped for more confetti, but it should
+   look exactly like the sprite it was before. */
+.chest-button {
+  background: none; border: none; padding: 0; cursor: pointer; line-height: 0;
+}
+.chest-button:active .sprite { transform: scale(0.94); }
+.chest-button .sprite { transition: transform 120ms ease-out; }
 .confetti { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 40; }
 .mute-toggle {
   position: fixed; top: 0.75rem; right: 0.75rem; z-index: 41;

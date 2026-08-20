@@ -60,6 +60,39 @@ describe('parseClue', () => {
     ])
   })
 
+  // Verses break after a comma, and the emphasis in a pasted clue routinely
+  // wraps two lines: `**As one number increases,\nsomething else decreases.**`
+  it('carries bold across a line break inside the same verse', () => {
+    const [block] = parseClue('**As one number increases,\nsomething else decreases.**')
+    expect(block).toMatchObject({ kind: 'stanza' })
+    const lines = (block as { lines: { text: string; bold: boolean }[][] }).lines
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toEqual([{ text: 'As one number increases,', bold: true, italic: false }])
+    expect(lines[1]).toEqual([{ text: 'something else decreases.', bold: true, italic: false }])
+  })
+
+  it('carries italic across a line break too', () => {
+    const [block] = parseClue('*first\nsecond*')
+    const lines = (block as { lines: { text: string; italic: boolean }[][] }).lines
+    expect(lines.map(l => l[0].italic)).toEqual([true, true])
+  })
+
+  it('keeps the unemphasised remainder of a wrapped run plain', () => {
+    const [block] = parseClue('**bold one,\nbold two.**\nplain three.')
+    const lines = (block as { lines: { text: string; bold: boolean }[][] }).lines
+    expect(lines.map(l => l[0].bold)).toEqual([true, true, false])
+  })
+
+  // A blank line is a new verse, so emphasis must not leak into it: an unclosed
+  // marker stays literal rather than swallowing the rest of the clue.
+  it('does not carry bold across a verse break', () => {
+    const blocks = parseClue('**unclosed here\n\nand a new verse**')
+    const first = (blocks[0] as { lines: { text: string; bold: boolean }[][] }).lines
+    const second = (blocks[1] as { lines: { text: string; bold: boolean }[][] }).lines
+    expect(first[0][0]).toEqual({ text: '**unclosed here', bold: false, italic: false })
+    expect(second[0][0]).toEqual({ text: 'and a new verse**', bold: false, italic: false })
+  })
+
   it('leaves an unclosed marker as literal text', () => {
     expect(parseClue('2 ** 3 is not bold')).toEqual([
       { kind: 'stanza', lines: [[{ text: '2 ** 3 is not bold', bold: false, italic: false }]] },

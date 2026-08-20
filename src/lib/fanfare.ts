@@ -36,6 +36,46 @@ function silenced(): boolean {
   return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 }
 
+/** Shared setup, so both sounds obey the same mute and the same fallbacks. */
+function withAudio(play: (context: AudioContext, start: number) => void): void {
+  if (silenced()) return
+  const Ctor = window.AudioContext
+    ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+  if (!Ctor) return
+  try {
+    const context = new Ctor()
+    void context.resume?.()
+    play(context, context.currentTime)
+  } catch {
+    // A device that refuses to make sound must never break the screen.
+  }
+}
+
+/**
+ * Clearing a level: two quick rising notes. Deliberately short and quiet next to
+ * the win fanfare — it fires up to a dozen times a game, so it has to read as
+ * "that worked" without ever competing with the ending.
+ */
+export function playUnlock(): void {
+  withAudio((context, start) => {
+    const notes = [659.25, 987.77]
+    notes.forEach((frequency, index) => {
+      const at = start + index * 0.08
+      const oscillator = context.createOscillator()
+      const gain = context.createGain()
+      oscillator.type = 'square'
+      oscillator.frequency.value = frequency
+      gain.gain.setValueAtTime(0.0001, at)
+      gain.gain.linearRampToValueAtTime(0.14, at + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.18)
+      oscillator.connect(gain)
+      gain.connect(context.destination)
+      oscillator.start(at)
+      oscillator.stop(at + 0.18)
+    })
+  })
+}
+
 export function playFanfare(): void {
   if (silenced()) return
   const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext

@@ -3,6 +3,7 @@ import type { TeamView } from '../lib/api'
 import type { Feedback } from './usePlayerGame'
 import ScratchCard from './ScratchCard'
 import ClueScroll from './ClueScroll'
+import { playUnlock } from '../lib/fanfare'
 import RaceStatus from './RaceStatus'
 import { GhostSprite } from './sprites'
 
@@ -22,7 +23,12 @@ export default function CardGrid({ view, feedback, busy, onSubmit, onOpen }: Pro
 
   useEffect(() => {
     if (feedback?.kind === 'cooldown') setCooldown(feedback.seconds)
-    if (feedback?.kind === 'correct') setCode('')
+    if (feedback?.kind === 'correct') {
+      setCode('')
+      // A short blip for clearing a level. The win has its own fanfare, and that
+      // screen replaces this one, so the two never sound together.
+      playUnlock()
+    }
   }, [feedback])
 
   useEffect(() => {

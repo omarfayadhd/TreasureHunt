@@ -8,3 +8,9 @@ dist
 supabase/.temp
 supabase/.branches
 .DS_Store
+secrets.md
+# Pasted clue sources and generated seeds: real clues and printed codes, which
+# are the game's secrets. Never commit them.
+*.local.sql
+sample.html
+secrets.html

@@ -1,8 +1,16 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import PlayerApp from './PlayerApp'
 import * as api from '../lib/api'
+import * as fanfare from '../lib/fanfare'
 import type { TeamView } from '../lib/api'
+
+vi.mock('../lib/fanfare', () => ({
+  playFanfare: vi.fn(),
+  playUnlock: vi.fn(),
+  isMuted: vi.fn(() => false),
+  setMuted: vi.fn(),
+}))
 
 vi.mock('../lib/api', () => ({
   teamView: vi.fn(),
@@ -13,6 +21,8 @@ vi.mock('../lib/api', () => ({
 const mockedView = vi.mocked(api.teamView)
 const mockedSubmit = vi.mocked(api.submitCode)
 const mockedOpen = vi.mocked(api.openCard)
+const mockedUnlock = vi.mocked(fanfare.playUnlock)
+const mockedFanfare = vi.mocked(fanfare.playFanfare)
 
 function view(overrides: Partial<TeamView> = {}): TeamView {
   return {
@@ -216,5 +226,43 @@ describe('the demo team', () => {
   it('plays the demo like any other team until the treasure', async () => {
     await loginAs(view({ demo: true, demo_won: false }))
     expect(await screen.findByLabelText(/enter code/i)).toBeInTheDocument()
+  })
+})
+
+describe('sounds', () => {
+  it('plays the unlock sound when a code is accepted', async () => {
+    await loginAs(view())
+    mockedSubmit.mockResolvedValue({ ok: true, correct: true, view: view({ cleared: 2 }) })
+    await userEvent.type(screen.getByLabelText(/enter code/i), 'AAA222')
+    await userEvent.click(screen.getByRole('button', { name: /submit code/i }))
+
+    await waitFor(() => expect(mockedUnlock).toHaveBeenCalled())
+    // The win fanfare belongs to the treasure, not to clearing a level.
+    expect(mockedFanfare).not.toHaveBeenCalled()
+  })
+
+  it('stays quiet on a wrong code', async () => {
+    await loginAs(view())
+    mockedSubmit.mockResolvedValue({ ok: true, correct: false, reason: 'wrong', view: view() })
+    await userEvent.type(screen.getByLabelText(/enter code/i), 'NOPE12')
+    await userEvent.click(screen.getByRole('button', { name: /submit code/i }))
+    expect(mockedUnlock).not.toHaveBeenCalled()
+  })
+
+  it('plays the fanfare, not the unlock blip, for the win', async () => {
+    await loginAs(view({ status: 'winner', cleared: 3, total: 3, race: null }))
+    expect(await screen.findByText(/treasure found/i)).toBeInTheDocument()
+    expect(mockedFanfare).toHaveBeenCalled()
+    expect(mockedUnlock).not.toHaveBeenCalled()
+  })
+
+  it('throws more confetti every time the treasure is clicked', async () => {
+    await loginAs(view({ status: 'winner', cleared: 3, total: 3, race: null }))
+    const chest = await screen.findByRole('button', { name: /treasure/i })
+    expect(mockedFanfare).toHaveBeenCalledTimes(1)
+    await userEvent.click(chest)
+    expect(mockedFanfare).toHaveBeenCalledTimes(2)
+    await userEvent.click(chest)
+    expect(mockedFanfare).toHaveBeenCalledTimes(3)
   })
 })

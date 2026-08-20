@@ -1,4 +1,4 @@
-import { playFanfare, isMuted, setMuted } from './fanfare'
+import { playFanfare, playUnlock, isMuted, setMuted } from './fanfare'
 
 type StubNode = {
   connect: ReturnType<typeof vi.fn>
@@ -84,5 +84,43 @@ describe('playFanfare', () => {
 
   it('does nothing at all where WebAudio is missing', () => {
     expect(() => playFanfare()).not.toThrow()
+  })
+})
+
+describe('playUnlock', () => {
+  it('is a shorter, different sound from the win fanfare', () => {
+    const first = audioStub()
+    playUnlock()
+    const unlockNotes = first.oscillators.length
+
+    const second = audioStub()
+    playFanfare()
+    expect(second.oscillators.length).toBeGreaterThan(unlockNotes)
+  })
+
+  it('rises, so clearing a level reads as progress', () => {
+    const audio = audioStub()
+    playUnlock()
+    const pitches = audio.oscillators.map(o => o.frequency.value)
+    expect(pitches.length).toBeGreaterThanOrEqual(2)
+    expect(pitches.slice(1).every((p, i) => p > pitches[i])).toBe(true)
+  })
+
+  it('obeys the same mute as the fanfare', () => {
+    const audio = audioStub()
+    setMuted(true)
+    playUnlock()
+    expect(audio.Ctor).not.toHaveBeenCalled()
+  })
+
+  it('stays silent for reduced motion', () => {
+    const audio = audioStub()
+    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: true } as MediaQueryList)
+    playUnlock()
+    expect(audio.Ctor).not.toHaveBeenCalled()
+  })
+
+  it('does nothing where WebAudio is missing', () => {
+    expect(() => playUnlock()).not.toThrow()
   })
 })
