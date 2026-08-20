@@ -112,21 +112,26 @@ from (values
 ) as v(name, team_code)
 where not exists (select 1 from public.teams);
 
--- Staggered rotation over the first three locations, so no two teams are at the
--- same place at the same level and every team still ends somewhere different.
+-- Two staggered legs each: no two teams are at the same place at the same level,
+-- and no team walks through the treasure on the way. The third card is the
+-- treasure, which is the same place and the same code for everybody.
 insert into public.team_stations (team_id, level, station_id, code)
 select t.id, v.level, s.id, v.code
 from (values
-  ('Owls',      1, 'Reception desk',  'RECEP1'),
-  ('Owls',      2, 'Kitchen fridge',  'KITCH2'),
-  ('Owls',      3, 'Fire stairwell',  'STAIR3'),
-  ('Mongooses', 1, 'Kitchen fridge',  'KITCH4'),
-  ('Mongooses', 2, 'Fire stairwell',  'STAIR5'),
-  ('Mongooses', 3, 'Server cupboard', 'SERVE6'),
-  ('Foxes',     1, 'Fire stairwell',  'STAIR7'),
-  ('Foxes',     2, 'Server cupboard', 'SERVE8'),
-  ('Foxes',     3, 'Reception desk',  'RECEP9')
+  ('Owls',      1, 'Reception desk', 'RECEP1'),
+  ('Owls',      2, 'Kitchen fridge', 'KITCH2'),
+  ('Mongooses', 1, 'Kitchen fridge', 'KITCH4'),
+  ('Mongooses', 2, 'Fire stairwell', 'STAIR5'),
+  ('Foxes',     1, 'Fire stairwell', 'STAIR7'),
+  ('Foxes',     2, 'Reception desk', 'RECEP9')
 ) as v(team_name, level, station_name, code)
 join public.teams t on t.name = v.team_name
 join public.stations s on s.name = v.station_name
 where not exists (select 1 from public.team_stations);
+
+-- The one treasure: same location, same code, every team. First team to send
+-- TREAS9 wins; anyone later is told it is gone and keeps hunting none the wiser.
+update public.game
+set treasure_station_id = (select id from public.stations where name = 'Server cupboard'),
+    treasure_code = 'TREAS9'
+where id = 1 and treasure_station_id is null;

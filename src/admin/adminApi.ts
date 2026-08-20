@@ -17,6 +17,8 @@ export type MonitorRow = {
   wrong_count: number
   /** The location this team is hunting right now; null once its route is done. */
   current_location: string | null
+  /** When this team reached a treasure somebody else had already claimed. */
+  too_late_at: string | null
 }
 
 export async function fetchMonitor(): Promise<MonitorRow[]> {
@@ -121,6 +123,9 @@ export type GameRow = {
   started_at: string | null
   ended_at: string | null
   initial_team_count: number | null
+  /** The one shared final location, and the one code posted there. */
+  treasure_station_id: string | null
+  treasure_code: string | null
 }
 
 export async function fetchGame(): Promise<GameRow> {
@@ -156,6 +161,15 @@ export const setRouteCode = (teamId: string, level: number): Promise<AdminRpcRes
 
 export const clearRouteCell = (teamId: string, level: number): Promise<AdminRpcResult> =>
   adminRpc('clear_route_cell', { p_team_id: teamId, p_level: level })
+
+// The treasure is one location and one code for the whole hunt. Same reasons as
+// the route RPCs: server-side guards, and collisions reported as readable codes.
+export const setTreasure = (stationId: string): Promise<AdminRpcResult> =>
+  adminRpc('set_treasure', { p_station_id: stationId })
+
+export const setTreasureCode = (): Promise<AdminRpcResult> => adminRpc('set_treasure_code')
+
+export const clearTreasure = (): Promise<AdminRpcResult> => adminRpc('clear_treasure')
 
 export const startGame = (): Promise<AdminRpcResult> => adminRpc('start_game')
 export const pauseGame = (): Promise<AdminRpcResult> => adminRpc('pause_game')

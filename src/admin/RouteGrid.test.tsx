@@ -96,6 +96,12 @@ describe('RouteGrid', () => {
     for (const button of screen.getAllByRole('button')) expect(button).toBeDisabled()
   })
 
+  it('does not offer the treasure location as a route stop', () => {
+    renderGrid({ treasureStationId: 'station-2' })
+    const options = [...screen.getByLabelText('Team 1 level 3 location').querySelectorAll('option')]
+    expect(options.map(o => o.textContent)).toEqual(['—', 'Station 1'])
+  })
+
   it('reports nothing when every route is complete and staggered', () => {
     expect(routeIssues(teams, stations, rows)).toEqual([])
   })

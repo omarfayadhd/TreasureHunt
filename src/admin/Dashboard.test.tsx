@@ -21,6 +21,7 @@ function row(overrides: Partial<MonitorRow>): MonitorRow {
     last_solve_at: null,
     wrong_count: 0,
     current_location: null,
+    too_late_at: null,
     ...overrides,
   }
 }
@@ -29,7 +30,10 @@ function mount(rows: MonitorRow[], levels = 3) {
   vi.mocked(useMonitor).mockReturnValue({
     rows,
     levels,
-    game: { id: 1, status: 'live', started_at: null, ended_at: null, initial_team_count: rows.length },
+    game: {
+      id: 1, status: 'live', started_at: null, ended_at: null,
+      initial_team_count: rows.length, treasure_station_id: null, treasure_code: null,
+    },
     error: null,
     loading: false,
   })
@@ -88,5 +92,18 @@ describe('Dashboard locations', () => {
     ])
     expect(screen.getByText('Movers').closest('tr')).toHaveTextContent('Vault')
     expect(screen.getByText('Winners').closest('tr')).toHaveTextContent('—')
+  })
+})
+
+describe('Dashboard endgame', () => {
+  it('marks the winner and the teams that reached a claimed treasure', () => {
+    mount([
+      row({ name: 'Owls', status: 'winner', cleared_level: 3, finished_at: '2026-08-20T14:02:11Z' }),
+      row({ name: 'Foxes', cleared_level: 2, too_late_at: '2026-08-20T14:07:48Z' }),
+      row({ name: 'Mongooses', cleared_level: 1 }),
+    ])
+    expect(screen.getByText('Owls').closest('tr')).toHaveTextContent(/winner/i)
+    expect(screen.getByText('Foxes').closest('tr')).toHaveTextContent(/too late/i)
+    expect(screen.getByText('Mongooses').closest('tr')).toHaveTextContent(/playing/i)
   })
 })

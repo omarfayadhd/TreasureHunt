@@ -117,9 +117,12 @@ describe('PlayerApp', () => {
     expect(await screen.findByText(/treasure found/i)).toBeInTheDocument()
   })
 
-  it('shows the placing for a later finisher', async () => {
-    await loginAs(view({ status: 'finished', cleared: 3, race: null, place: 2 }))
-    expect(await screen.findByText(/2nd/i)).toBeInTheDocument()
+  // One treasure, one winner: a team that arrives late is told on the code form
+  // and keeps hunting, so no screen ever shows a placing.
+  it('never shows a placing', async () => {
+    await loginAs(view({ status: 'winner', cleared: 3, race: null, place: 1 }))
+    expect(await screen.findByText(/treasure found/i)).toBeInTheDocument()
+    expect(screen.queryByText(/\b1st\b|\b2nd\b|\b3rd\b/i)).not.toBeInTheDocument()
   })
 
   it('waits for kickoff when the game is in setup', async () => {
@@ -176,5 +179,24 @@ describe('clue sheet', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /close/i }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
+
+describe('the claimed treasure', () => {
+  it('says the treasure is gone when another team got there first', async () => {
+    await loginAs(view())
+    mockedSubmit.mockResolvedValue({
+      ok: true, correct: false, reason: 'treasure_claimed', view: view(),
+    })
+    await userEvent.type(screen.getByLabelText(/enter code/i), 'TREAS9')
+    await userEvent.click(screen.getByRole('button', { name: /submit code/i }))
+    expect(await screen.findByText(/already claimed/i)).toBeInTheDocument()
+  })
+
+  it('congratulates the winner without ranking anyone', async () => {
+    await loginAs(view({ status: 'winner', cleared: 3, total: 3, place: 1, race: null }))
+    expect(await screen.findByText(/treasure found/i)).toBeInTheDocument()
+    // One winner, no placings: nothing on screen should read as an ordinal.
+    expect(screen.queryByText(/\b1st\b|\b2nd\b|\b3rd\b|finished 1/i)).not.toBeInTheDocument()
   })
 })

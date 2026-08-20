@@ -18,11 +18,20 @@ vi.mock('./adminApi', () => ({
       : null,
 }))
 
-const setupGame = { id: 1, status: 'setup' as const, started_at: null, ended_at: null, initial_team_count: null }
+const setupGame = {
+  id: 1,
+  status: 'setup' as const,
+  started_at: null,
+  ended_at: null,
+  initial_team_count: null,
+  treasure_station_id: null,
+  treasure_code: null,
+}
 
 function row(overrides: Partial<MonitorRow>): MonitorRow {
   return {
     current_location: null,
+    too_late_at: null,
     id: 'team-1',
     name: 'Mongooses',
     team_code: 'TIGER42',

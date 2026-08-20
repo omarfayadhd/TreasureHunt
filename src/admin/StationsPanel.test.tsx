@@ -6,6 +6,9 @@ import type { MonitorRow, RouteCell, StationRow } from './adminApi'
 
 vi.mock('./adminApi', () => ({
   fetchStations: vi.fn(),
+  setTreasure: vi.fn(),
+  setTreasureCode: vi.fn(),
+  clearTreasure: vi.fn(),
   createStation: vi.fn(),
   updateStation: vi.fn(),
   deleteStation: vi.fn(),
@@ -48,11 +51,20 @@ function monitorRow(overrides: Partial<MonitorRow>): MonitorRow {
     last_solve_at: null,
     wrong_count: 0,
     current_location: null,
+    too_late_at: null,
     ...overrides,
   }
 }
 
-const setupGame = { id: 1, status: 'setup' as const, started_at: null, ended_at: null, initial_team_count: null }
+const setupGame = {
+  id: 1,
+  status: 'setup' as const,
+  started_at: null,
+  ended_at: null,
+  initial_team_count: null,
+  treasure_station_id: null,
+  treasure_code: null,
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -68,9 +80,11 @@ describe('StationsPanel', () => {
       station({ id: 'station-2', name: 'Treasure spot', clue_text: 'You have arrived', sort_order: 2 }),
     ])
     render(<StationsPanel />)
-    expect(await screen.findByText('Kitchen')).toBeInTheDocument()
+    // Location names also appear in the treasure picker, so read the table.
+    const table = (await screen.findByRole('table')).closest('table')!
+    expect(table).toHaveTextContent('Kitchen')
+    expect(table).toHaveTextContent('Treasure spot')
     expect(screen.getByText('Where the coffee lives')).toBeInTheDocument()
-    expect(screen.getByText('Treasure spot')).toBeInTheDocument()
   })
 
   it('creates a location with no code of its own', async () => {
@@ -218,5 +232,59 @@ describe('StationsPanel clue formatting', () => {
     vi.mocked(adminApi.fetchStations).mockResolvedValue([])
     render(<StationsPanel />)
     expect(await screen.findByText(/\*\*bold\*\*/)).toBeInTheDocument()
+  })
+})
+
+describe('StationsPanel treasure', () => {
+  it('asks for a treasure location and shows nothing set yet', async () => {
+    vi.mocked(adminApi.fetchStations).mockResolvedValue([station({})])
+    render(<StationsPanel />)
+    expect(await screen.findByRole('heading', { name: /treasure/i })).toBeInTheDocument()
+    expect(screen.getByLabelText(/treasure location/i)).toHaveValue('')
+    expect(screen.getByText(/no treasure set/i)).toBeInTheDocument()
+  })
+
+  it('sets the treasure location', async () => {
+    vi.mocked(adminApi.fetchStations).mockResolvedValue([
+      station({}),
+      station({ id: 'station-2', name: 'Vault', sort_order: 2 }),
+    ])
+    vi.mocked(adminApi.setTreasure).mockResolvedValue({ ok: true, code: 'TREAS9' })
+    render(<StationsPanel />)
+    await userEvent.selectOptions(await screen.findByLabelText(/treasure location/i), 'station-2')
+    await waitFor(() => expect(adminApi.setTreasure).toHaveBeenCalledWith('station-2'))
+  })
+
+  it('shows the treasure code and reissues it', async () => {
+    vi.mocked(adminApi.fetchStations).mockResolvedValue([station({})])
+    vi.mocked(adminApi.fetchGame).mockResolvedValue({
+      ...setupGame, treasure_station_id: 'station-1', treasure_code: 'TREAS9',
+    })
+    vi.mocked(adminApi.setTreasureCode).mockResolvedValue({ ok: true, code: 'FRESH1' })
+    render(<StationsPanel />)
+    expect(await screen.findByText('TREAS9')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /new treasure code/i }))
+    await waitFor(() => expect(adminApi.setTreasureCode).toHaveBeenCalled())
+  })
+
+  it('explains a treasure location a team already walks through', async () => {
+    vi.mocked(adminApi.fetchStations).mockResolvedValue([
+      station({}),
+      station({ id: 'station-2', name: 'Vault', sort_order: 2 }),
+    ])
+    vi.mocked(adminApi.setTreasure).mockResolvedValue({ ok: false, error: 'location_used_by_team' })
+    render(<StationsPanel />)
+    await userEvent.selectOptions(await screen.findByLabelText(/treasure location/i), 'station-2')
+    expect(await screen.findByText(/already on a team's route/i)).toBeInTheDocument()
+  })
+
+  it('locks the treasure controls while the hunt runs', async () => {
+    vi.mocked(adminApi.fetchStations).mockResolvedValue([station({})])
+    vi.mocked(adminApi.fetchGame).mockResolvedValue({
+      ...setupGame, status: 'live', treasure_station_id: 'station-1', treasure_code: 'TREAS9',
+    })
+    render(<StationsPanel />)
+    expect(await screen.findByLabelText(/treasure location/i)).toBeDisabled()
+    expect(screen.getByRole('button', { name: /new treasure code/i })).toBeDisabled()
   })
 })

@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import {
-  fetchMonitor, fetchRoutes, fetchStations, type MonitorRow, type RouteCell, type StationRow,
+  fetchGame, fetchMonitor, fetchRoutes, fetchStations,
+  type GameRow, type MonitorRow, type RouteCell, type StationRow,
 } from './adminApi'
 
 export default function PrintPage() {
   const [stations, setStations] = useState<StationRow[]>([])
   const [teams, setTeams] = useState<MonitorRow[]>([])
   const [routes, setRoutes] = useState<RouteCell[]>([])
+  const [game, setGame] = useState<GameRow | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -16,10 +18,11 @@ export default function PrintPage() {
       .then(rows => setTeams([...rows].sort((a, b) => a.name.localeCompare(b.name))))
       .catch(fail)
     fetchRoutes().then(setRoutes).catch(fail)
+    fetchGame().then(setGame).catch(fail)
   }, [])
 
   const teamName = (id: string) => teams.find(t => t.id === id)?.name ?? 'Unknown team'
-  const routeLength = routes.length ? Math.max(...routes.map(r => r.level)) : 0
+  const treasure = stations.find(s => s.id === game?.treasure_station_id)
 
   return (
     <div className="print-page">
@@ -43,10 +46,7 @@ export default function PrintPage() {
             <h3 className="print-heading">Post at: {station.name}</h3>
             {here.map(cell => (
               <div className="print-card" key={`${cell.team_id}:${cell.level}`}>
-                <p className="print-eyebrow">
-                  🗺️ Treasure Hunt · Level {cell.level}
-                  {cell.level === routeLength ? ' · FINAL TREASURE' : ''}
-                </p>
+                <p className="print-eyebrow">🗺️ Treasure Hunt · Level {cell.level}</p>
                 <p className="print-team">{teamName(cell.team_id)}</p>
                 <p className="print-code">{cell.code}</p>
                 <p className="print-small">Only this team's code. Others get "belongs to another team".</p>
@@ -55,6 +55,20 @@ export default function PrintPage() {
           </section>
         )
       })}
+
+      {treasure && game?.treasure_code && (
+        <section className="print-section">
+          <h3 className="print-heading">Post at: {treasure.name}</h3>
+          <div className="print-card">
+            <p className="print-eyebrow">🗺️ Treasure Hunt · THE TREASURE</p>
+            <p className="print-code">{game.treasure_code}</p>
+            <p className="print-small">
+              One code for every team. The first team to send it wins; everyone after is told it is
+              gone.
+            </p>
+          </div>
+        </section>
+      )}
 
       <section className="print-section">
         {teams.map(team => (
@@ -86,6 +100,11 @@ export default function PrintPage() {
                   )
                 })}
               </ol>
+              {treasure && game?.treasure_code && (
+                <p className="print-small">
+                  Then the treasure: {treasure.name} — <code>{game.treasure_code}</code>
+                </p>
+              )}
             </div>
           )
         })}

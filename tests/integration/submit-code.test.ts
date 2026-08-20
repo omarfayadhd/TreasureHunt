@@ -50,12 +50,6 @@ async function teamRow(id: string) {
   }
 }
 
-async function placeOf(teamCode: string): Promise<number | null> {
-  const { data, error } = await anon.rpc('team_view', { p_team_code: teamCode })
-  if (error) throw new Error(error.message)
-  return (data as { place: number | null }).place
-}
-
 /**
  * Staggered rotation: team `index` (0-based) starts at location `index` and
  * wraps, so no two teams share a location at the same level.
@@ -176,45 +170,22 @@ describe('submit_code', () => {
     expect((await teamRow(b.id)).current_position).toBe(1)
   })
 
-  it('never eliminates anyone, however far apart the teams are', async () => {
+  // Clearing every leg is not winning: the treasure is a level of its own, and
+  // only submitting its code ends anything. See treasure.test.ts.
+  it('eliminates nobody and crowns nobody for clearing every staggered leg', async () => {
     const { a, b, c } = await threeTeamGame()
     for (const code of CODES.ALPHA1) {
       await submit('ALPHA1', code)
       await clearCooldown(service, a.id)
     }
-    // A has claimed the treasure; B and C have not moved at all
-    expect((await teamRow(a.id)).status).toBe('winner')
+    expect((await teamRow(a.id))).toMatchObject({ status: 'playing', current_position: 3 })
     for (const id of [b.id, c.id]) {
       expect((await teamRow(id))).toMatchObject({ status: 'playing', current_position: 0, out_at_level: null })
     }
-    const { data } = await service.from('teams').select('status').eq('status', 'eliminated')
+    const { data } = await service.from('teams').select('status').neq('status', 'playing')
     expect(data).toEqual([])
   })
 
-  it('crowns the first finisher and places later ones behind it', async () => {
-    const { a, b, c } = await threeTeamGame()
-    for (const team of [['ALPHA1', a.id], ['BETA22', b.id]] as const) {
-      for (const code of CODES[team[0]]) {
-        await submit(team[0], code)
-        await clearCooldown(service, team[1])
-      }
-    }
-    expect((await teamRow(a.id)).status).toBe('winner')
-    expect((await teamRow(b.id)).status).toBe('finished')
-    expect((await teamRow(c.id)).status).toBe('playing')
-
-    const view = (await submit('GAMMA3', 'NOPE99')).view!
-    expect(view.status).toBe('playing')
-  })
-
-  it('refuses further submits from a finished team', async () => {
-    const { a } = await threeTeamGame()
-    for (const code of CODES.ALPHA1) {
-      await submit('ALPHA1', code)
-      await clearCooldown(service, a.id)
-    }
-    expect(await submit('ALPHA1', 'AAA111')).toMatchObject({ ok: false, error: 'not_playing' })
-  })
 
   it('lets two teams clear their own level 2 simultaneously', async () => {
     const { a, b } = await threeTeamGame()
@@ -226,46 +197,6 @@ describe('submit_code', () => {
     expect(first).toMatchObject({ ok: true, correct: true })
     expect(second).toMatchObject({ ok: true, correct: true })
     for (const id of [a.id, b.id]) expect((await teamRow(id)).current_position).toBe(2)
-  })
-
-  // `place` is derived by ordering on `finished_at`, but the winner decision is
-  // serialized later in the transaction on the game-row lock. A transaction-start
-  // timestamp (`now()`) can therefore disagree with lock order and label the
-  // winner 2nd. Assert the PAIRING, not two independently sorted lists, and race
-  // repeatedly because a single run can get lucky.
-  it('pairs winner with 1st place every time two teams clear the FINAL level at once', async () => {
-    for (let attempt = 1; attempt <= 5; attempt++) {
-      await resetDb(service)
-      const { a, b } = await threeTeamGame()
-      for (const team of [['ALPHA1', a.id], ['BETA22', b.id]] as const) {
-        await submit(team[0], CODES[team[0]][0])
-        await clearCooldown(service, team[1])
-        await submit(team[0], CODES[team[0]][1])
-        await clearCooldown(service, team[1])
-      }
-
-      const [first, second] = await Promise.all([
-        submit('ALPHA1', CODES.ALPHA1[2]),
-        submit('BETA22', CODES.BETA22[2]),
-      ])
-      expect(first, `run ${attempt}`).toMatchObject({ ok: true, correct: true })
-      expect(second, `run ${attempt}`).toMatchObject({ ok: true, correct: true })
-
-      const rows = [
-        { code: 'ALPHA1', ...(await teamRow(a.id)), place: await placeOf('ALPHA1') },
-        { code: 'BETA22', ...(await teamRow(b.id)), place: await placeOf('BETA22') },
-      ]
-      expect(rows.map(r => r.status).sort(), `run ${attempt}`).toEqual(['finished', 'winner'])
-
-      const winner = rows.find(r => r.status === 'winner')!
-      const runnerUp = rows.find(r => r.status === 'finished')!
-      expect(winner.place, `run ${attempt}: winner ${winner.code} must be 1st`).toBe(1)
-      expect(runnerUp.place, `run ${attempt}: finisher ${runnerUp.code} must be 2nd`).toBe(2)
-      expect(
-        winner.finished_at! <= runnerUp.finished_at!,
-        `run ${attempt}: winner finished_at ${winner.finished_at} must not be after ${runnerUp.finished_at}`,
-      ).toBe(true)
-    }
   })
 
   it('never lets the same team double-advance on a concurrent double-submit', async () => {

@@ -13,7 +13,15 @@ vi.mock('./adminApi', () => ({
   resetProgress: vi.fn(),
 }))
 
-const setupGame = { id: 1, status: 'setup' as const, started_at: null, ended_at: null, initial_team_count: null }
+const setupGame = {
+  id: 1,
+  status: 'setup' as const,
+  started_at: null,
+  ended_at: null,
+  initial_team_count: null,
+  treasure_station_id: null,
+  treasure_code: null,
+}
 
 function renderPanel() {
   return render(
@@ -49,6 +57,20 @@ describe('GameControl', () => {
     renderPanel()
     await userEvent.click(await screen.findByRole('button', { name: /start/i }))
     expect(await screen.findByText(/same number of levels/i)).toBeInTheDocument()
+  })
+
+  it('explains a missing treasure', async () => {
+    vi.mocked(adminApi.startGame).mockResolvedValue({ ok: false, error: 'no_treasure' })
+    renderPanel()
+    await userEvent.click(await screen.findByRole('button', { name: /start/i }))
+    expect(await screen.findByText(/set the treasure location/i)).toBeInTheDocument()
+  })
+
+  it('explains a treasure sitting on a route', async () => {
+    vi.mocked(adminApi.startGame).mockResolvedValue({ ok: false, error: 'treasure_in_route' })
+    renderPanel()
+    await userEvent.click(await screen.findByRole('button', { name: /start/i }))
+    expect(await screen.findByText(/only meet there at the end/i)).toBeInTheDocument()
   })
 
   it('explains too few locations for the field', async () => {

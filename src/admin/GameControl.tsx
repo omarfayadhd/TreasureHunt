@@ -16,6 +16,10 @@ function errorMessage(error?: string): string {
       return 'A team has an incomplete route. Fill every cell of the Team routes grid, from level 1 up.'
     case 'route_length_mismatch':
       return 'Every team must run the same number of levels. Even up the Team routes grid.'
+    case 'no_treasure':
+      return 'Set the treasure location and its code on the Stations page before starting.'
+    case 'treasure_in_route':
+      return 'The treasure sits on a team route. Move it, or re-route that team — teams may only meet there at the end.'
     case 'not_in_setup':
       return 'The hunt has already started — this page is just out of date. Refreshing now.'
     case 'not_live':

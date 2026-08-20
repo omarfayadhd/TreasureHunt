@@ -44,6 +44,9 @@ function must<T extends { error: { message: string } | null }>(res: T): T {
 }
 
 export async function resetDb(service: SupabaseClient = serviceClient()): Promise<void> {
+  // The treasure reference has to go before the stations do: game.treasure_station_id
+  // is ON DELETE RESTRICT, so deleting a station it points at is refused.
+  must(await service.from('game').update({ treasure_station_id: null, treasure_code: null }).eq('id', 1))
   must(await service.from('attempts').delete().gte('id', 0))
   must(await service.from('card_opens').delete().gte('level', 0))
   must(await service.from('team_stations').delete().gte('level', 0))
@@ -52,7 +55,14 @@ export async function resetDb(service: SupabaseClient = serviceClient()): Promis
   must(
     await service
       .from('game')
-      .update({ status: 'setup', started_at: null, ended_at: null, initial_team_count: null })
+      .update({
+        status: 'setup',
+        started_at: null,
+        ended_at: null,
+        initial_team_count: null,
+        treasure_station_id: null,
+        treasure_code: null,
+      })
       .eq('id', 1),
   )
 }
@@ -92,6 +102,20 @@ export async function createTeam(service: SupabaseClient, name: string, code: st
     status: string
     out_at_level: number | null
   }
+}
+
+/** Points the game at its one shared treasure: same place, same code, every team. */
+export async function setTreasure(
+  service: SupabaseClient,
+  stationId: string | null,
+  code: string | null,
+): Promise<void> {
+  must(
+    await service
+      .from('game')
+      .update({ treasure_station_id: stationId, treasure_code: code })
+      .eq('id', 1),
+  )
 }
 
 export async function setGameStatus(service: SupabaseClient, status: string): Promise<void> {

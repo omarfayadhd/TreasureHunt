@@ -33,7 +33,12 @@ export type ViewResult = { ok: false; error: 'invalid_team_code' } | TeamView
 export type SubmitResult =
   | { ok: false; error: 'invalid_team_code' | 'game_not_live' | 'not_playing' }
   | { ok: false; error: 'cooldown'; retry_after_seconds: number }
-  | { ok: true; correct: false; reason: 'wrong' | 'already_used' | 'not_your_code'; view: TeamView }
+  | {
+      ok: true
+      correct: false
+      reason: 'wrong' | 'already_used' | 'not_your_code' | 'treasure_claimed'
+      view: TeamView
+    }
   | { ok: true; correct: true; view: TeamView }
 
 export type OpenResult =

@@ -54,11 +54,16 @@ export default function Dashboard() {
                 <td>{row.max_opened_level ?? '—'}</td>
                 <td>{row.cleared_level}</td>
                 <td>
+                  {/* One treasure, one winner. A team with too_late_at reached it
+                      after somebody else had claimed it — it is still playing, and
+                      still knows nothing. */}
                   {row.status === 'winner'
                     ? 'Winner'
-                    : row.status === 'finished'
-                      ? 'Finished'
-                      : 'Playing'}
+                    : row.too_late_at
+                      ? 'Too late'
+                      : row.status === 'finished'
+                        ? 'Finished'
+                        : 'Playing'}
                 </td>
                 <td>{row.last_solve_at ? timeAgo(row.last_solve_at) : '—'}</td>
                 <td>{row.wrong_count}</td>
