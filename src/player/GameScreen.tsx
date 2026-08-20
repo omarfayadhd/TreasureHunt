@@ -50,7 +50,7 @@ export default function GameScreen({ view, feedback, busy, onSubmit }: Props) {
   return (
     <div className="player-screen">
       <header className="player-header">
-        <span className="team-name">{view.team_name}</span>
+        <span className="team-chip"><span aria-hidden="true">🧭</span>{view.team_name}</span>
         <span className="progress-label">Clue {view.position + 1} of {view.total}</span>
       </header>
       <div className="progress-dots" aria-hidden="true">
@@ -63,15 +63,18 @@ export default function GameScreen({ view, feedback, busy, onSubmit }: Props) {
         <p>{view.clue}</p>
       </div>
       <form onSubmit={handleSubmit} className="code-form">
-        <label htmlFor="code-input">Enter code</label>
-        <input
-          id="code-input"
-          value={code}
-          onChange={e => setCode(e.target.value)}
-          placeholder="e.g. TIGER-42"
-          autoComplete="off"
-          autoCapitalize="characters"
-        />
+        <div className="float-field">
+          <input
+            id="code-input"
+            value={code}
+            onChange={e => setCode(e.target.value)}
+            placeholder="e.g. TIGER-42"
+            autoComplete="off"
+            autoCapitalize="characters"
+          />
+          <label htmlFor="code-input">Enter code</label>
+          <fieldset aria-hidden="true"><legend><span>Enter code</span></legend></fieldset>
+        </div>
         <button type="submit" disabled={busy || cooldown > 0 || !code.trim()}>
           {cooldown > 0 ? `Wait ${cooldown}s…` : 'Submit code'}
         </button>

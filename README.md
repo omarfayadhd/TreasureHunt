@@ -1,4 +1,4 @@
-# 🗺️ Office Treasure Hunt
+# 🗺️ Treasure Hunt
 
 A web app for running an office treasure hunt: teams unlock clues by entering
 codes found at physical locations, racing to the final treasure code. Includes

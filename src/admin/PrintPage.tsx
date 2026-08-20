@@ -27,7 +27,7 @@ export default function PrintPage() {
         {stations.map(station => (
           <div className="print-card" key={station.id}>
             <p className="print-eyebrow">
-              🗺️ Office Treasure Hunt{station.is_final ? ' · FINAL TREASURE' : ''}
+              🗺️ Treasure Hunt{station.is_final ? ' · FINAL TREASURE' : ''}
             </p>
             <p className="print-code">{station.code}</p>
             <p className="print-small">Post at: {station.name}</p>
@@ -37,7 +37,7 @@ export default function PrintPage() {
       <section className="print-section">
         {teams.map(team => (
           <div className="print-card" key={team.id}>
-            <p className="print-eyebrow">🗺️ Office Treasure Hunt</p>
+            <p className="print-eyebrow">🗺️ Treasure Hunt</p>
             <p className="print-team">{team.name}</p>
             <p className="print-code">{team.team_code}</p>
             <p className="print-small">Open the hunt site and enter this team code to begin.</p>
