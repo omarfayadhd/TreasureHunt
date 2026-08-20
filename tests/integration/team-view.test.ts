@@ -77,7 +77,7 @@ describe('team_view', () => {
     expect((await view('ALPHA1')).race).toEqual({ level: 1, slots: 3, taken: 0 })
   })
 
-  it('drops a slot for later races and counts teams already through', async () => {
+  it('drops a slot for later races', async () => {
     await seedStations(service, 3)
     const a = await createTeam(service, 'Team 1', 'ALPHA1')
     await createTeam(service, 'Team 2', 'BETA22')
@@ -85,7 +85,20 @@ describe('team_view', () => {
     await setGameStatus(service, 'live')
     await service.from('teams').update({ current_position: 1 }).eq('id', a.id)
 
-    expect((await view('ALPHA1')).race).toEqual({ level: 2, slots: 2, taken: 1 })
+    expect((await view('ALPHA1')).race).toEqual({ level: 2, slots: 2, taken: 0 })
+  })
+
+  it('counts teams already through the current level', async () => {
+    await seedStations(service, 3)
+    const a = await createTeam(service, 'Team 1', 'ALPHA1')
+    const b = await createTeam(service, 'Team 2', 'BETA22')
+    await createTeam(service, 'Team 3', 'GAMMA3')
+    await setGameStatus(service, 'live')
+    // A is through level 2; B is still racing it
+    await service.from('teams').update({ current_position: 2 }).eq('id', a.id)
+    await service.from('teams').update({ current_position: 1 }).eq('id', b.id)
+
+    expect((await view('BETA22')).race).toEqual({ level: 2, slots: 2, taken: 1 })
   })
 
   it('marks opened cards and reports no race once eliminated', async () => {
