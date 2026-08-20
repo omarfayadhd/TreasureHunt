@@ -98,6 +98,37 @@ refusal; sending `TREAS9` from two teams in turn shows the win and then "the
 treasure was already claimed". To get back to this state, run
 `supabase db reset` again.
 
+## Importing clues written elsewhere
+
+Clues get written in Docs, Chat or Word, where bold is real formatting rather
+than `**asterisks**`. Save the clipboard's HTML flavour and convert it:
+
+```bash
+xclip -selection clipboard -t text/html -o > paste.html   # X11
+wl-paste --type text/html > paste.html                    # Wayland
+
+# One heading per location, clue beneath it:
+npx vite-node scripts/clues-from-html.ts paste.html > clues.local.sql
+
+# Or a chat paste labelled `Team 1 - Q1:`, one set of clues per team:
+npx vite-node scripts/seed-teams-from-chat.ts paste.html Pookalam Maveli Chenda Sadya \
+  > seed.local.sql
+```
+
+Both print SQL and write nothing themselves — read it, then run it in the SQL
+editor of the project you mean to change. Every statement is guarded, so running
+a file twice adds nothing. `**bold**`, `*italic*`, line and verse breaks and
+`---` rules are carried over; sender names, timestamps and other chat chrome are
+dropped.
+
+Per-team clues become one location per team-question (`<Team> · Clue N`), because
+`stations.clue_text` is one clue per place: four teams with four different level-1
+riddles need four rows. Neither script sets the treasure — that is one shared
+place with one shared code, so pick it on the Stations page before starting.
+
+`*.local.sql` and pasted sources are gitignored: they hold the clues and the
+printed codes, which are the game's secrets.
+
 ## Tests
 
 ```bash
