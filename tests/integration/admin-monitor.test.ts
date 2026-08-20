@@ -18,10 +18,11 @@ describe('admin_monitor', () => {
       { team_id: a.id, level: 2 },
     ])
     await service.from('teams').update({ current_position: 1 }).eq('id', a.id)
+    // Only 'wrong' counts: revision 2 never records 'too_late'.
     await service.from('attempts').insert([
       { team_id: a.id, submitted_code: 'CODE1', result: 'correct' },
       { team_id: a.id, submitted_code: 'NOPE1', result: 'wrong' },
-      { team_id: a.id, submitted_code: 'NOPE2', result: 'too_late' },
+      { team_id: a.id, submitted_code: 'NOPE2', result: 'wrong' },
     ])
 
     const admin = await adminClient()
@@ -34,6 +35,20 @@ describe('admin_monitor', () => {
     expect(rows[0].last_solve_at).not.toBeNull()
     expect(rows[1]).toMatchObject({ name: 'Team 2', started: false, cleared_level: 0, wrong_count: 0 })
     expect(rows[1].max_opened_level).toBeNull()
+  })
+
+  it('leaves the vestigial too_late result out of wrong_count', async () => {
+    await seedStations(service, 2)
+    const a = await createTeam(service, 'Team 1', 'ALPHA1')
+    await service.from('attempts').insert([
+      { team_id: a.id, submitted_code: 'NOPE1', result: 'wrong' },
+      { team_id: a.id, submitted_code: 'NOPE2', result: 'too_late' },
+      { team_id: a.id, submitted_code: 'CODE1', result: 'already_used' },
+    ])
+
+    const admin = await adminClient()
+    const { data } = await admin.from('admin_monitor').select('wrong_count').eq('id', a.id).single()
+    expect(data).toMatchObject({ wrong_count: 1 })
   })
 
   it('is not readable anonymously', async () => {
