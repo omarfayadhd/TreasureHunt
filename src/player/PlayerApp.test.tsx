@@ -26,9 +26,9 @@ function view(overrides: Partial<TeamView> = {}): TeamView {
     place: null,
     race: { level: 2, found: 1, teams: 3 },
     cards: [
-      { level: 1, unlocked: true, opened: true, clue: 'Under the plant' },
-      { level: 2, unlocked: true, opened: false, clue: 'Behind the fridge' },
-      { level: 3, unlocked: false, opened: false, clue: null },
+      { level: 1, unlocked: true, opened: true, clue: 'Under the plant', location: 'Lobby' },
+      { level: 2, unlocked: true, opened: false, clue: 'Behind the fridge', location: 'Kitchen' },
+      { level: 3, unlocked: false, opened: false, clue: null, location: null },
     ],
     ...overrides,
   }
@@ -125,5 +125,23 @@ describe('PlayerApp', () => {
   it('waits for kickoff when the game is in setup', async () => {
     await loginAs(view({ game_status: 'setup', race: null }))
     expect(await screen.findByText(/hasn't started/i)).toBeInTheDocument()
+  })
+})
+
+describe('per-team routes', () => {
+  it('names the location of each unlocked card and hides locked ones', async () => {
+    await loginAs(view())
+    expect(await screen.findByText('Lobby')).toBeInTheDocument()
+    expect(screen.getByText('Kitchen')).toBeInTheDocument()
+    // The level 3 card is locked: neither its clue nor its location is sent.
+    expect(screen.queryByText(/vault/i)).not.toBeInTheDocument()
+  })
+
+  it("says so when the code belongs to another team", async () => {
+    await loginAs(view())
+    mockedSubmit.mockResolvedValue({ ok: true, correct: false, reason: 'not_your_code', view: view() })
+    await userEvent.type(screen.getByLabelText(/enter code/i), 'BBB111')
+    await userEvent.click(screen.getByRole('button', { name: /submit code/i }))
+    expect(await screen.findByText(/belongs to another team/i)).toBeInTheDocument()
   })
 })

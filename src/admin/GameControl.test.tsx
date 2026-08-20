@@ -37,11 +37,25 @@ describe('GameControl', () => {
     expect(await screen.findByText(/add teams before starting/i)).toBeInTheDocument()
   })
 
-  it('explains a level gap in plain language', async () => {
-    vi.mocked(adminApi.startGame).mockResolvedValue({ ok: false, error: 'level_gap' })
+  it('explains an incomplete route in plain language', async () => {
+    vi.mocked(adminApi.startGame).mockResolvedValue({ ok: false, error: 'route_incomplete' })
     renderPanel()
     await userEvent.click(await screen.findByRole('button', { name: /start/i }))
-    expect(await screen.findByText(/levels must run 1, 2, 3/i)).toBeInTheDocument()
+    expect(await screen.findByText(/team routes grid/i)).toBeInTheDocument()
+  })
+
+  it('explains uneven route lengths', async () => {
+    vi.mocked(adminApi.startGame).mockResolvedValue({ ok: false, error: 'route_length_mismatch' })
+    renderPanel()
+    await userEvent.click(await screen.findByRole('button', { name: /start/i }))
+    expect(await screen.findByText(/same number of levels/i)).toBeInTheDocument()
+  })
+
+  it('explains too few locations for the field', async () => {
+    vi.mocked(adminApi.startGame).mockResolvedValue({ ok: false, error: 'not_enough_locations' })
+    renderPanel()
+    await userEvent.click(await screen.findByRole('button', { name: /start/i }))
+    expect(await screen.findByText(/add more locations/i)).toBeInTheDocument()
   })
 
   it('reports the shape of the game it just started', async () => {

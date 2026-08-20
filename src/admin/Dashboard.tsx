@@ -29,6 +29,7 @@ export default function Dashboard() {
           <thead>
             <tr>
               <th>Team</th>
+              <th>Hunting</th>
               <th>Start</th>
               <th>Opened</th>
               <th>Cleared</th>
@@ -48,6 +49,7 @@ export default function Dashboard() {
                 }
               >
                 <td>{row.name}</td>
+                <td>{row.current_location ?? '—'}</td>
                 <td>{row.started ? 'Started' : 'Not started'}</td>
                 <td>{row.max_opened_level ?? '—'}</td>
                 <td>{row.cleared_level}</td>
@@ -63,7 +65,7 @@ export default function Dashboard() {
               </tr>
             ))}
             {!rows.length && !loading && (
-              <tr><td colSpan={7} className="empty">No teams yet — add them on the Teams page.</td></tr>
+              <tr><td colSpan={8} className="empty">No teams yet — add them on the Teams page.</td></tr>
             )}
           </tbody>
         </table>

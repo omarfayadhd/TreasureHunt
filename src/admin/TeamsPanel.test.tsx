@@ -22,6 +22,7 @@ const setupGame = { id: 1, status: 'setup' as const, started_at: null, ended_at:
 
 function row(overrides: Partial<MonitorRow>): MonitorRow {
   return {
+    current_location: null,
     id: 'team-1',
     name: 'Mongooses',
     team_code: 'TIGER42',
