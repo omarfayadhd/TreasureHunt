@@ -4,6 +4,7 @@ import {
   swapOrder, updateStation, type RouteCell, type StationRow,
 } from './adminApi'
 import RouteGrid, { type RouteTeam } from './RouteGrid'
+import ClueText from '../lib/ClueText'
 
 type Draft = { name: string; clue_text: string }
 
@@ -100,9 +101,26 @@ export default function StationsPanel() {
           <label htmlFor="station-name">Location name</label>
           <input id="station-name" value={name} disabled={gameRunning} onChange={e => setName(e.target.value)} placeholder="Kitchen fridge" />
         </div>
-        <div>
+        <div className="clue-field">
           <label htmlFor="station-clue">Clue leading here</label>
-          <input id="station-clue" value={clue} disabled={gameRunning} onChange={e => setClue(e.target.value)} placeholder="Where lunches chill…" />
+          <textarea
+            id="station-clue"
+            rows={6}
+            value={clue}
+            disabled={gameRunning}
+            onChange={e => setClue(e.target.value)}
+            placeholder={'Two things **begin** your journey\nlook *behind* the milk'}
+          />
+          <p className="hint">
+            Formatting: <code>**bold**</code>, <code>*italic*</code>, one newline for a new line,
+            a blank line for a new verse, <code>---</code> for an ornament rule.
+          </p>
+          {clue.trim() && (
+            <>
+              <p className="hint">The team reads it like this:</p>
+              <ClueText clue={clue} className="clue-preview" testId="clue-preview" />
+            </>
+          )}
         </div>
         <button type="submit" disabled={gameRunning} title={gameRunning ? RUNNING_HINT : undefined}>
           Add location
@@ -138,7 +156,14 @@ export default function StationsPanel() {
               {editingId === station.id ? (
                 <>
                   <td><input aria-label="Edit name" value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} /></td>
-                  <td><input aria-label="Edit clue" value={draft.clue_text} onChange={e => setDraft({ ...draft, clue_text: e.target.value })} /></td>
+                  <td>
+                    <textarea
+                      aria-label="Edit clue"
+                      rows={5}
+                      value={draft.clue_text}
+                      onChange={e => setDraft({ ...draft, clue_text: e.target.value })}
+                    />
+                  </td>
                   <td>
                     <button onClick={() => saveEdit(station.id)}>Save</button>{' '}
                     <button className="link-btn" onClick={() => setEditingId(null)}>Cancel</button>
@@ -147,7 +172,7 @@ export default function StationsPanel() {
               ) : (
                 <>
                   <td>{station.name}</td>
-                  <td>{station.clue_text}</td>
+                  <td><ClueText clue={station.clue_text} className="clue-cell" /></td>
                   <td>
                     <button
                       className="link-btn"

@@ -18,6 +18,10 @@
   --radius: 0;
   --radius-sm: 0;
   --font-display: "Press Start 2P", "Courier New", monospace;
+  /* The clue sheet is the one place that breaks the pixel-art type: it is meant
+     to read as ink on old paper. Local faces only, so it works offline. */
+  --font-scroll: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia,
+    "Liberation Serif", "DejaVu Serif", serif;
   --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   --shadow-hard: 4px 4px 0 #000;
@@ -330,6 +334,71 @@ code {
 .attempt-feed { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .attempt-feed li { display: flex; gap: 0.45rem; align-items: baseline; font-size: 0.92rem; flex-wrap: wrap; }
 .attempt-feed time { color: var(--muted); font-size: 0.8rem; margin-left: auto; }
+
+/* ---------- Clue markup, shared by the sheet and the admin preview ---------- */
+.clue-stanza { margin: 0 0 0.9rem; }
+.clue-stanza:last-child { margin-bottom: 0; }
+/* Each line is its own block so a verse keeps the line breaks the admin typed. */
+.clue-line { display: block; }
+.clue-divider {
+  margin: 1rem 0; text-align: center; letter-spacing: 0.6em; color: currentColor; opacity: 0.55;
+}
+.clue-preview {
+  margin-top: 0.4rem; padding: 0.75rem 0.9rem; border-radius: 8px;
+  background: var(--panel-2); color: var(--ink); font-family: var(--font-body); line-height: 1.5;
+}
+.clue-cell { font-family: var(--font-body); line-height: 1.4; white-space: normal; }
+.clue-field textarea { width: 100%; min-width: 18rem; resize: vertical; }
+
+/* ---------- The clue sheet ---------- */
+.scratch-read {
+  margin-top: 0.5rem; background: none; border: 1px dashed var(--brand); color: var(--brand);
+  font-family: var(--font-display); font-size: 0.5rem; padding: 0.4rem 0.6rem; cursor: pointer;
+}
+.scroll-backdrop {
+  position: fixed; inset: 0; z-index: 50; display: grid; justify-items: center;
+  /* `safe center` so a sheet taller than the viewport is not centred into
+     unreachable overflow above the fold — it pins to the top and scrolls. */
+  align-content: safe center;
+  padding: 1rem; overflow-y: auto; background: rgba(8, 6, 3, 0.72);
+}
+/*
+ * Aged paper, drawn rather than downloaded: warm gradients for the sun-bleached
+ * middle and dirtier edges, a repeating-gradient for the fibre, and a turbulent
+ * SVG mask that eats the border into a torn edge. A browser that cannot do the
+ * mask simply gets a rectangular sheet — the clue is still perfectly readable.
+ */
+.scroll-sheet {
+  --torn: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800"><filter id="t"><feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="4" seed="7"/><feDisplacementMap in="SourceGraphic" scale="26"/></filter><rect x="14" y="14" width="572" height="772" fill="white" filter="url(%23t)"/></svg>');
+  position: relative; width: min(34rem, 100%);
+  padding: 2.5rem clamp(1.5rem, 6vw, 3.5rem) 2rem;
+  color: #241a0e; text-align: center;
+  background:
+    radial-gradient(ellipse at 50% 40%, rgba(255, 252, 240, 0.85), rgba(255, 252, 240, 0) 62%),
+    repeating-linear-gradient(96deg, rgba(150, 120, 70, 0.05) 0 3px, rgba(0, 0, 0, 0) 3px 7px),
+    linear-gradient(160deg, #e8dcbb 0%, #ddd0aa 45%, #cbb98d 100%);
+  -webkit-mask-image: var(--torn); mask-image: var(--torn);
+  -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  font-family: var(--font-scroll);
+  font-size: clamp(1rem, 3.6vw, 1.2rem); line-height: 1.55;
+}
+.scroll-sheet p, .scroll-sheet .clue-stanza { font-family: var(--font-scroll); }
+.scroll-title {
+  font-family: var(--font-scroll);
+  margin: 0 0 0.4rem; font-size: 1.9em; font-weight: 700; font-style: italic;
+  letter-spacing: 0.01em; color: #1d150b;
+}
+.scroll-divider {
+  margin: 0.35rem auto 1rem; max-width: 20rem; color: #6b5836;
+  letter-spacing: 0.6em; border-top: 1px solid rgba(80, 62, 30, 0.45); padding-top: 0.5rem;
+}
+.scroll-body { font-style: italic; }
+.scroll-body strong { font-weight: 700; font-style: normal; }
+.scroll-close {
+  margin-top: 0.5rem; background: #4a3a1c; color: #f6efdc; border: none; border-radius: 6px;
+  padding: 0.55rem 1.4rem; font-family: var(--font-display); font-size: 0.5rem; cursor: pointer;
+}
 
 /* ---------- Team route grid ---------- */
 /* One row per team, one column per level, plus a trailing column that extends

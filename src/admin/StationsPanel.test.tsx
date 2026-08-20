@@ -184,3 +184,39 @@ describe('StationsPanel', () => {
     expect(await screen.findByLabelText('Team 1 level 1 location')).toBeDisabled()
   })
 })
+
+describe('StationsPanel clue formatting', () => {
+  it('takes a multi-line clue in a textarea', async () => {
+    vi.mocked(adminApi.fetchStations).mockResolvedValue([])
+    vi.mocked(adminApi.createStation).mockResolvedValue(undefined)
+    render(<StationsPanel />)
+    const clue = await screen.findByLabelText(/clue/i)
+    expect(clue.tagName).toBe('TEXTAREA')
+
+    await userEvent.type(await screen.findByLabelText(/location name/i), 'Reception')
+    await userEvent.type(clue, 'Two things **begin**{enter}your journey')
+    await userEvent.click(screen.getByRole('button', { name: /add location/i }))
+    await waitFor(() =>
+      expect(adminApi.createStation).toHaveBeenCalledWith({
+        name: 'Reception',
+        clue_text: 'Two things **begin**\nyour journey',
+        sort_order: 1,
+      }),
+    )
+  })
+
+  it('previews the clue the way the team will read it', async () => {
+    vi.mocked(adminApi.fetchStations).mockResolvedValue([])
+    render(<StationsPanel />)
+    await userEvent.type(await screen.findByLabelText(/clue/i), 'Two things **begin**')
+    const preview = screen.getByTestId('clue-preview')
+    expect(preview).toHaveTextContent('Two things begin')
+    expect(preview.querySelector('strong')?.textContent).toBe('begin')
+  })
+
+  it('spells out the formatting a clue understands', async () => {
+    vi.mocked(adminApi.fetchStations).mockResolvedValue([])
+    render(<StationsPanel />)
+    expect(await screen.findByText(/\*\*bold\*\*/)).toBeInTheDocument()
+  })
+})

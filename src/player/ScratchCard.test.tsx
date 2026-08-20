@@ -91,7 +91,10 @@ describe('ScratchCard', () => {
   it('shows the clue outright once opened', () => {
     render(<ScratchCard card={card({ opened: true })} isCurrent onOpen={vi.fn()} />)
     expect(screen.getByText('Behind the coffee machine')).toBeInTheDocument()
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    // No scratch control on an opened card — only the button that puts the clue
+    // back up on its sheet.
+    expect(screen.queryByRole('button', { name: /scratch/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /read the clue/i })).toBeInTheDocument()
   })
 
   it('offers a reveal control for an unopened card and reports the open once', async () => {
@@ -210,5 +213,40 @@ describe('ScratchCard canvas scratching', () => {
     const arcsSoFar = stub.calls.arc.length
     pointer('pointermove', canvas, 90, 90)
     expect(stub.calls.arc).toHaveLength(arcsSoFar)
+  })
+})
+
+describe('ScratchCard reveal handoff', () => {
+  it('asks for the clue sheet when the fallback reveal is used', async () => {
+    const onReveal = vi.fn()
+    render(<ScratchCard card={card()} isCurrent onOpen={vi.fn()} onReveal={onReveal} />)
+    await userEvent.click(screen.getByRole('button', { name: /scratch to reveal/i }))
+    expect(onReveal).toHaveBeenCalledWith(2)
+  })
+
+  it('asks for the clue sheet when scratching crosses the threshold', () => {
+    const stub = contextStub()
+    stub.install()
+    try {
+      const onReveal = vi.fn()
+      const { container } = render(
+        <ScratchCard card={card()} isCurrent onOpen={vi.fn()} onReveal={onReveal} />,
+      )
+      const canvas = container.querySelector('canvas')!
+      stub.setCleared(0.9)
+      for (let i = 0; i < 6; i++) {
+        fireEvent.pointerDown(canvas, { clientX: 10 + i, clientY: 10, pointerId: 1 })
+      }
+      expect(onReveal).toHaveBeenCalledWith(2)
+    } finally {
+      stub.uninstall()
+    }
+  })
+
+  it('reopens the clue sheet when an already-opened card is tapped', async () => {
+    const onReveal = vi.fn()
+    render(<ScratchCard card={card({ opened: true })} isCurrent onOpen={vi.fn()} onReveal={onReveal} />)
+    await userEvent.click(screen.getByRole('button', { name: /read the clue/i }))
+    expect(onReveal).toHaveBeenCalledWith(2)
   })
 })

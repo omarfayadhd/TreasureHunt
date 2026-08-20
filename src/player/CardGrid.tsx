@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import type { TeamView } from '../lib/api'
 import type { Feedback } from './usePlayerGame'
 import ScratchCard from './ScratchCard'
+import ClueScroll from './ClueScroll'
 import RaceStatus from './RaceStatus'
 import { GhostSprite } from './sprites'
 
@@ -16,6 +17,8 @@ type Props = {
 export default function CardGrid({ view, feedback, busy, onSubmit, onOpen }: Props) {
   const [code, setCode] = useState('')
   const [cooldown, setCooldown] = useState(0)
+  // Which level's clue is up on the sheet. One sheet for the whole grid.
+  const [scrollLevel, setScrollLevel] = useState<number | null>(null)
 
   useEffect(() => {
     if (feedback?.kind === 'cooldown') setCooldown(feedback.seconds)
@@ -54,6 +57,7 @@ export default function CardGrid({ view, feedback, busy, onSubmit, onOpen }: Pro
   })()
 
   const currentLevel = view.cleared + 1
+  const scrollCard = view.cards.find(card => card.level === scrollLevel)
 
   return (
     <div className="player-screen">
@@ -74,6 +78,7 @@ export default function CardGrid({ view, feedback, busy, onSubmit, onOpen }: Pro
             isCurrent={card.level === currentLevel}
             isFinal={card.level === view.total}
             onOpen={onOpen}
+            onReveal={setScrollLevel}
           />
         ))}
       </div>
@@ -95,6 +100,15 @@ export default function CardGrid({ view, feedback, busy, onSubmit, onOpen }: Pro
           {cooldown > 0 ? `Wait ${cooldown}s…` : 'Submit code'}
         </button>
       </form>
+
+      {scrollCard && scrollCard.clue && (
+        <ClueScroll
+          teamName={view.team_name}
+          level={scrollCard.level}
+          clue={scrollCard.clue}
+          onClose={() => setScrollLevel(null)}
+        />
+      )}
 
       {message && (
         <p className={message.className} role="status">

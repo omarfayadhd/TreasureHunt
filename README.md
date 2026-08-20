@@ -105,6 +105,11 @@ well-known local keys.
 2. **Stations tab, Locations list** — create the pool of places: a name and
    the clue that leads *to* it. No codes and no levels here. Add at least as
    many locations as you have teams.
+
+   Clues take a small markup: `**bold**`, `*italic*`, one newline for a new
+   line, a blank line for a new verse, `---` for an ornament rule. The panel
+   previews each clue exactly as the team will read it. Nothing else is
+   interpreted — a clue containing HTML shows that HTML as text.
 3. **Stations tab, Team routes grid** — one row per team, one column per
    level. Pick a location per cell; the server mints that cell's code and
    refuses a pick that would put two teams in the same place at the same
@@ -132,6 +137,8 @@ well-known local keys.
 
 - Clues and codes live only in Postgres; the browser receives a clue only
   after the team earns it.
+- Clue markup is parsed to data and rendered as elements, never as an HTML
+  string, so a clue can never inject markup or script into a player's phone.
 - Wrong codes get a generic response (no probing which codes exist).
 - Codes are team-specific: `submit_code` only ever compares against the
   calling team's own `team_stations` rows, so a code overheard from, or

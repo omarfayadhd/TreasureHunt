@@ -145,3 +145,36 @@ describe('per-team routes', () => {
     expect(await screen.findByText(/belongs to another team/i)).toBeInTheDocument()
   })
 })
+
+describe('clue sheet', () => {
+  it('opens the styled clue sheet when a card is scratched', async () => {
+    const scratched = view({
+      cards: [
+        { level: 1, unlocked: true, opened: false, clue: 'Two things **begin** here', location: 'Lobby' },
+        { level: 2, unlocked: false, opened: false, clue: null, location: null },
+      ],
+      cleared: 0,
+      total: 2,
+    })
+    // Scratching reports the open, so the view that comes back has to be this
+    // team's view — otherwise the sheet would show whatever the stub returned.
+    mockedOpen.mockResolvedValue({ ok: true, level: 1, clue: 'Two things **begin** here', view: scratched })
+    await loginAs(scratched)
+
+    await userEvent.click(await screen.findByRole('button', { name: /scratch to reveal/i }))
+    expect(await screen.findByRole('heading', { name: 'Team 1 – Clue 1' })).toBeInTheDocument()
+    expect(screen.getByText('begin').tagName).toBe('STRONG')
+  })
+
+  it('closes the clue sheet again', async () => {
+    await loginAs(view({
+      cards: [{ level: 1, unlocked: true, opened: true, clue: 'Two things begin', location: 'Lobby' }],
+      cleared: 0,
+      total: 1,
+    }))
+    await userEvent.click(await screen.findByRole('button', { name: /read the clue/i }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /close/i }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
