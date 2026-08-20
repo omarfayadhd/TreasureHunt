@@ -1,8 +1,15 @@
 type Props = { className?: string }
 
 /** Pixel sprites drawn on a 16-unit grid so they stay crisp when scaled. */
-const grid = (paths: [string, string][], className?: string) => (
-  <svg className={className} viewBox="0 0 16 16" aria-hidden="true" focusable="false" shapeRendering="crispEdges">
+const grid = (name: string, paths: [string, string][], className?: string) => (
+  <svg
+    className={className}
+    data-sprite={name}
+    viewBox="0 0 16 16"
+    aria-hidden="true"
+    focusable="false"
+    shapeRendering="crispEdges"
+  >
     {paths.map(([d, fill]) => (
       <path key={d + fill} d={d} fill={fill} />
     ))}
@@ -11,6 +18,7 @@ const grid = (paths: [string, string][], className?: string) => (
 
 export const ChestSprite = ({ className }: Props) =>
   grid(
+    'chest',
     [
       ['M2 6h12v8H2z', '#8a4b12'],
       ['M3 3h10v3H3z', '#c98b2e'],
@@ -24,6 +32,7 @@ export const ChestSprite = ({ className }: Props) =>
 
 export const LockSprite = ({ className }: Props) =>
   grid(
+    'lock',
     [
       ['M5 7h6v7H5z', '#9aa0b5'],
       ['M6 3h4v4H6z', '#6f7590'],
@@ -35,6 +44,7 @@ export const LockSprite = ({ className }: Props) =>
 
 export const CoinSprite = ({ className }: Props) =>
   grid(
+    'coin',
     [
       ['M5 3h6v10H5z', '#ffd400'],
       ['M4 5h1v6H4zM11 5h1v6h-1z', '#c9a400'],
@@ -45,6 +55,7 @@ export const CoinSprite = ({ className }: Props) =>
 
 export const GhostSprite = ({ className }: Props) =>
   grid(
+    'ghost',
     [
       ['M4 5h8v8H4z', '#ff3b30'],
       ['M5 3h6v2H5z', '#ff3b30'],
@@ -57,6 +68,7 @@ export const GhostSprite = ({ className }: Props) =>
 
 export const FlagSprite = ({ className }: Props) =>
   grid(
+    'flag',
     [
       ['M4 2h1v12H4z', '#9aa0b5'],
       ['M5 3h7v4H5z', '#33ffff'],

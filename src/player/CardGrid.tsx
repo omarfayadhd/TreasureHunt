@@ -3,6 +3,7 @@ import type { TeamView } from '../lib/api'
 import type { Feedback } from './usePlayerGame'
 import ScratchCard from './ScratchCard'
 import RaceStatus from './RaceStatus'
+import { GhostSprite } from './sprites'
 
 type Props = {
   view: TeamView
@@ -38,7 +39,7 @@ export default function CardGrid({ view, feedback, busy, onSubmit, onOpen }: Pro
     if (!feedback) return null
     switch (feedback.kind) {
       case 'wrong':
-        return { className: 'msg msg-bad shake', text: 'Wrong code. Keep hunting!' }
+        return { className: 'msg msg-bad shake', text: 'Wrong code. Keep hunting!', ghost: true }
       case 'already_used':
         return { className: 'msg msg-warn', text: "You've used that one — follow your newest clue!" }
       case 'correct':
@@ -69,6 +70,7 @@ export default function CardGrid({ view, feedback, busy, onSubmit, onOpen }: Pro
             key={card.level}
             card={card}
             isCurrent={card.level === currentLevel}
+            isFinal={card.level === view.total}
             onOpen={onOpen}
           />
         ))}
@@ -92,7 +94,12 @@ export default function CardGrid({ view, feedback, busy, onSubmit, onOpen }: Pro
         </button>
       </form>
 
-      {message && <p className={message.className} role="status">{message.text}</p>}
+      {message && (
+        <p className={message.className} role="status">
+          {'ghost' in message && message.ghost && <GhostSprite className="sprite sprite-sm" />}
+          {message.text}
+        </p>
+      )}
     </div>
   )
 }

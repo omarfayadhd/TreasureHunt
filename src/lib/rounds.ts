@@ -6,10 +6,6 @@ export type Placed = {
   finished_at: string | null
 }
 
-export function isUnlocked(level: number, cleared: number): boolean {
-  return level <= cleared + 1
-}
-
 /** Finishers first (earliest finish wins), then teams still hunting by progress. */
 export function comparePlacement(a: Placed, b: Placed): number {
   const aDone = a.finished_at !== null

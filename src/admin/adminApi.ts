@@ -29,24 +29,6 @@ export async function countStations(): Promise<number> {
   return count ?? 0
 }
 
-export type AttemptRow = {
-  id: number
-  submitted_code: string
-  result: 'correct' | 'wrong' | 'already_used'
-  created_at: string
-  teams: { name: string } | null
-}
-
-export async function fetchRecentAttempts(limit = 20): Promise<AttemptRow[]> {
-  const { data, error } = await supabase
-    .from('attempts')
-    .select('id, submitted_code, result, created_at, teams(name)')
-    .order('created_at', { ascending: false })
-    .limit(limit)
-  if (error) throw error
-  return data as unknown as AttemptRow[]
-}
-
 export type AdminRpcResult = { ok: boolean; error?: string; [key: string]: unknown }
 
 async function adminRpc(fn: string, args?: Record<string, unknown>): Promise<AdminRpcResult> {

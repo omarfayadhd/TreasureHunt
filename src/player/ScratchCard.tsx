@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Card } from '../lib/api'
-import { CoinSprite, LockSprite } from './sprites'
+import { CoinSprite, FlagSprite, LockSprite } from './sprites'
 
 type Props = {
   card: Card
   isCurrent: boolean
+  /** The treasure level: flagged rather than coined, per the spec's sprite roles. */
+  isFinal?: boolean
   onOpen: (level: number) => void
 }
 
@@ -15,7 +17,7 @@ const SAMPLE_EVERY = 6
 /** Read back a 1/8-scale copy, so ~1/64 of the pixels. */
 const SAMPLE_SCALE = 8
 
-export default function ScratchCard({ card, isCurrent, onOpen }: Props) {
+export default function ScratchCard({ card, isCurrent, isFinal = false, onOpen }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [scratching, setScratching] = useState(false)
   const [revealed, setRevealed] = useState(card.opened)
@@ -114,7 +116,7 @@ export default function ScratchCard({ card, isCurrent, onOpen }: Props) {
 
   if (!card.unlocked) {
     return (
-      <div className="scratch-card is-locked">
+      <div className={`scratch-card is-locked${isFinal ? ' is-final' : ''}`}>
         <LockSprite className="sprite" />
         <span className="scratch-level">{card.level}</span>
         <span className="scratch-state">Locked</span>
@@ -125,9 +127,9 @@ export default function ScratchCard({ card, isCurrent, onOpen }: Props) {
   const showFoil = !revealed
 
   return (
-    <div className={`scratch-card${isCurrent ? ' is-current' : ''}`}>
+    <div className={`scratch-card${isCurrent ? ' is-current' : ''}${isFinal ? ' is-final' : ''}`}>
       <span className="scratch-level">
-        <CoinSprite className="sprite sprite-sm" />
+        {isFinal ? <FlagSprite className="sprite sprite-sm" /> : <CoinSprite className="sprite sprite-sm" />}
         {card.level}
       </span>
       <p className="scratch-clue">{card.clue}</p>

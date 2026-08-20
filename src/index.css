@@ -244,6 +244,10 @@ code {
   font-family: var(--font-display); font-size: 0.625rem; letter-spacing: 0.1em;
 }
 .scratch-card.is-current { border-color: var(--brand); animation: blink 1.6s steps(2, end) infinite; }
+/* The treasure level, flagged rather than coined — cyan, matching the flag sprite. */
+.scratch-card.is-final { border-color: var(--accent); }
+.scratch-card.is-final .scratch-level { color: var(--accent); }
+.msg .sprite-sm { vertical-align: -0.15em; margin-right: 0.3rem; }
 .scratch-level {
   display: inline-flex; align-items: center; gap: 0.35rem;
   font-family: var(--font-display); font-size: 0.625rem; color: var(--brand);

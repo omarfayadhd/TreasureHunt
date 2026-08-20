@@ -67,6 +67,16 @@ describe('PlayerApp', () => {
     }
   })
 
+  it('flags the final level and coins the rest', async () => {
+    await loginAs(view())
+    const cards = document.querySelectorAll('.scratch-card')
+    expect(cards).toHaveLength(3)
+    expect(cards[2].classList.contains('is-final')).toBe(true)
+    expect(cards[2].querySelector('[data-sprite="lock"]')).toBeTruthy()
+    expect(cards[0].querySelector('[data-sprite="flag"]')).toBeNull()
+    expect(cards[1].querySelector('[data-sprite="coin"]')).toBeTruthy()
+  })
+
   it('shows one card per level with locked cards hidden', async () => {
     await loginAs(view())
     expect(await screen.findByText('Under the plant')).toBeInTheDocument()
@@ -91,6 +101,15 @@ describe('PlayerApp', () => {
     await userEvent.type(screen.getByLabelText(/enter code/i), 'CODE2')
     await userEvent.click(screen.getByRole('button', { name: /submit code/i }))
     expect(await screen.findByText(/code cracked/i)).toBeInTheDocument()
+  })
+
+  it('puts the ghost on the wrong-code message', async () => {
+    await loginAs(view())
+    mockedSubmit.mockResolvedValue({ ok: true, correct: false, reason: 'wrong', view: view() })
+    await userEvent.type(screen.getByLabelText(/enter code/i), 'NOPE99')
+    await userEvent.click(screen.getByRole('button', { name: /submit code/i }))
+    const message = await screen.findByText(/wrong code/i)
+    expect(message.querySelector('[data-sprite="ghost"]')).toBeTruthy()
   })
 
   it('shows the winner screen for the first finisher', async () => {

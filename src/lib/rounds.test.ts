@@ -1,13 +1,4 @@
-import { isUnlocked, comparePlacement, type Placed } from './rounds'
-
-describe('isUnlocked', () => {
-  it('unlocks the first card and one past what is cleared', () => {
-    expect(isUnlocked(1, 0)).toBe(true)
-    expect(isUnlocked(2, 0)).toBe(false)
-    expect(isUnlocked(3, 2)).toBe(true)
-    expect(isUnlocked(4, 2)).toBe(false)
-  })
-})
+import { comparePlacement, type Placed } from './rounds'
 
 describe('comparePlacement', () => {
   const playing: Placed = { status: 'playing', cleared_level: 1, finished_at: null }
