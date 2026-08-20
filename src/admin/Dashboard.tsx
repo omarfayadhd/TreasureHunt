@@ -1,16 +1,12 @@
-import { setupWarning, slotsForLevel } from '../lib/rounds'
 import { timeAgo } from './timeAgo'
 import { useMonitor } from './useMonitor'
 
 export default function Dashboard() {
   const { rows, levels, game, error, loading } = useMonitor()
 
-  const alive = rows.filter(r => r.status !== 'eliminated')
-  const racing = rows.filter(r => r.status === 'playing')
-  const raceLevel = racing.length ? Math.min(...racing.map(r => r.cleared_level)) + 1 : null
-  const slots = raceLevel ? slotsForLevel(raceLevel, alive.length) : 0
-  const taken = raceLevel ? rows.filter(r => r.cleared_level >= raceLevel).length : 0
-  const warning = setupWarning(levels, rows.length)
+  const finished = rows.filter(r => r.status === 'winner' || r.status === 'finished')
+  const playing = rows.filter(r => r.status === 'playing')
+  const packLevel = playing.length ? Math.min(...playing.map(r => r.cleared_level)) + 1 : null
 
   return (
     <section className="control-layout">
@@ -22,12 +18,10 @@ export default function Dashboard() {
         <p className="hud-line">
           <strong className={`status status-${game?.status ?? 'setup'}`}>{game?.status ?? 'setup'}</strong>
           {' · '}
-          {racing.length} teams alive of {rows.length}
-          {raceLevel !== null && ` · racing clue ${raceLevel}: ${taken} of ${slots} slots taken`}
+          {finished.length} of {rows.length} teams finished
+          {packLevel !== null && ` · clue ${packLevel}`}
         </p>
-        <p className={warning ? 'msg msg-warn' : 'hint'}>
-          {warning ?? `${levels} clues for ${rows.length} teams — set up to end on one winner.`}
-        </p>
+        <p className="hint">{levels} clues for {rows.length} teams.</p>
       </div>
 
       <div className="card">
@@ -49,7 +43,6 @@ export default function Dashboard() {
                 key={row.id}
                 className={
                   row.status === 'winner' ? 'row-winner'
-                  : row.status === 'eliminated' ? 'row-out'
                   : !row.started ? 'row-idle'
                   : undefined
                 }
@@ -59,13 +52,11 @@ export default function Dashboard() {
                 <td>{row.max_opened_level ?? '—'}</td>
                 <td>{row.cleared_level}</td>
                 <td>
-                  {row.status === 'eliminated'
-                    ? `Out at ${row.out_at_level}`
-                    : row.status === 'winner'
-                      ? 'Winner'
-                      : row.status === 'finished'
-                        ? 'Finished'
-                        : 'Playing'}
+                  {row.status === 'winner'
+                    ? 'Winner'
+                    : row.status === 'finished'
+                      ? 'Finished'
+                      : 'Playing'}
                 </td>
                 <td>{row.last_solve_at ? timeAgo(row.last_solve_at) : '—'}</td>
                 <td>{row.wrong_count}</td>

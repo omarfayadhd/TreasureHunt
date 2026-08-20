@@ -52,27 +52,29 @@ describe('Dashboard', () => {
     expect(tr).toHaveTextContent('2')
   })
 
-  it('flags teams that failed to find a code with the level they went out at', () => {
-    mount([row({ name: 'Stragglers', status: 'eliminated', out_at_level: 2, cleared_level: 1 })])
-    expect(screen.getByText('Stragglers').closest('tr')).toHaveTextContent(/out at 2/i)
-  })
-
   it('highlights the winner', () => {
     mount([row({ name: 'Champs', status: 'winner', cleared_level: 3, finished_at: '2026-08-20T10:00:00Z' })])
     expect(screen.getByText('Champs').closest('tr')).toHaveClass('row-winner')
   })
 
-  it('summarises the current race', () => {
+  it('summarises how many teams have finished', () => {
     mount([
-      row({ name: 'A', cleared_level: 1, started: true }),
-      row({ name: 'B', cleared_level: 0, started: true }),
-      row({ name: 'C', cleared_level: 0, started: true }),
+      row({ name: 'Champs', status: 'winner', cleared_level: 3, finished_at: '2026-08-20T10:00:00Z' }),
+      row({ name: 'Chasers', cleared_level: 1, started: true }),
     ])
-    expect(screen.getByText(/3 teams alive/i)).toBeInTheDocument()
+    expect(screen.getByText(/1 of 2 teams finished/i)).toBeInTheDocument()
   })
 
-  it('warns when levels and teams do not line up', () => {
-    mount([row({ name: 'A' }), row({ name: 'B' }), row({ name: 'C' }), row({ name: 'D' }), row({ name: 'E' })], 3)
-    expect(screen.getByText(/teams will claim the treasure together/i)).toBeInTheDocument()
+  it('shows where the pack has reached', () => {
+    mount([
+      row({ name: 'A', cleared_level: 2, started: true }),
+      row({ name: 'B', cleared_level: 1, started: true }),
+    ])
+    expect(screen.getByText(/clue 2/i)).toBeInTheDocument()
+  })
+
+  it('marks a later finisher with its placing', () => {
+    mount([row({ name: 'Second', status: 'finished', cleared_level: 3, finished_at: '2026-08-20T10:09:00Z' })])
+    expect(screen.getByText('Second').closest('tr')).toHaveTextContent(/finished/i)
   })
 })

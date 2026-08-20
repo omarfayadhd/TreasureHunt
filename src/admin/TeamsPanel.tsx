@@ -114,7 +114,6 @@ export default function TeamsPanel() {
               </td>
               <td>
                 {team.cleared_level}
-                {team.status === 'eliminated' ? ` — out at ${team.out_at_level}` : ''}
                 {(team.status === 'winner' || team.status === 'finished') ? ' 🏆' : ''}
               </td>
               <td>
