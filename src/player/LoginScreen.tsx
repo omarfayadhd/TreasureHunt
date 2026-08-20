@@ -26,7 +26,7 @@ export default function LoginScreen({ onLogin, error, busy }: Props) {
               id="team-code-input"
               value={code}
               onChange={e => setCode(e.target.value)}
-              placeholder="e.g. MANGO-77"
+              placeholder="e.g. MANGO77"
               autoComplete="off"
               autoCapitalize="characters"
             />
