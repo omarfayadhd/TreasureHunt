@@ -15,30 +15,50 @@
 export type ClueSpan = { text: string; bold: boolean; italic: boolean }
 export type ClueBlock = { kind: 'stanza'; lines: ClueSpan[][] } | { kind: 'divider' }
 
-const MARKS = /\*\*(.+?)\*\*|\*(.+?)\*/g
+// [\s\S] rather than `.`: a marked run routinely wraps a line, because clue
+// verses break after a comma. It still cannot cross a verse break — stanzas are
+// parsed one at a time, so a blank line ends any run.
+const MARKS = /\*\*([\s\S]+?)\*\*|\*([\s\S]+?)\*/g
 const DIVIDER = /^-{3,}$/
 
-function parseLine(line: string): ClueSpan[] {
+/** Marks up one verse, then cuts it back into the lines the author typed. */
+function parseStanza(stanza: string): ClueSpan[][] {
   const spans: ClueSpan[] = []
   let cursor = 0
-  for (const match of line.matchAll(MARKS)) {
+  for (const match of stanza.matchAll(MARKS)) {
     const at = match.index ?? 0
-    if (at > cursor) spans.push({ text: line.slice(cursor, at), bold: false, italic: false })
+    if (at > cursor) spans.push({ text: stanza.slice(cursor, at), bold: false, italic: false })
     const [, bold, italic] = match
     spans.push({ text: bold ?? italic ?? '', bold: bold !== undefined, italic: italic !== undefined })
     cursor = at + match[0].length
   }
-  if (cursor < line.length) spans.push({ text: line.slice(cursor), bold: false, italic: false })
-  return spans
+  if (cursor < stanza.length) {
+    spans.push({ text: stanza.slice(cursor), bold: false, italic: false })
+  }
+
+  // A span that wrapped a line becomes one span per line, each keeping the
+  // emphasis, so the verse still renders with the breaks the author typed.
+  const lines: ClueSpan[][] = [[]]
+  for (const span of spans) {
+    const pieces = span.text.split('\n')
+    pieces.forEach((text, index) => {
+      if (index > 0) lines.push([])
+      if (text !== '') lines[lines.length - 1].push({ ...span, text })
+    })
+  }
+  return lines.filter(line => line.length > 0)
 }
 
 export function parseClue(raw: string | null | undefined): ClueBlock[] {
   const blocks: ClueBlock[] = []
-  let stanza: ClueSpan[][] = []
+  let pending: string[] = []
 
   const flush = () => {
-    if (stanza.length) blocks.push({ kind: 'stanza', lines: stanza })
-    stanza = []
+    if (pending.length) {
+      const lines = parseStanza(pending.join('\n'))
+      if (lines.length) blocks.push({ kind: 'stanza', lines })
+    }
+    pending = []
   }
 
   for (const line of (raw ?? '').split('\n')) {
@@ -49,7 +69,7 @@ export function parseClue(raw: string | null | undefined): ClueBlock[] {
       flush()
       blocks.push({ kind: 'divider' })
     } else {
-      stanza.push(parseLine(trimmed))
+      pending.push(trimmed)
     }
   }
   flush()
