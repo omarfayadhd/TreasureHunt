@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { resetDb, serviceClient } from './helpers'
+import { anonClient, resetDb, serviceClient } from './helpers'
 
 const service = serviceClient()
 
@@ -20,5 +20,10 @@ describe('random_team_code', () => {
     const { data, error } = await service.rpc('random_team_code')
     expect(error).toBeNull()
     expect(data as string).toMatch(/^[A-HJ-NP-Z2-9]{6}$/)
+  })
+
+  it('is not callable anonymously', async () => {
+    const { error } = await anonClient().rpc('random_team_code')
+    expect(error).not.toBeNull()
   })
 })
