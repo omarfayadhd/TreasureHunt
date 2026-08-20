@@ -1,20 +1,28 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import {
-  endGame, fetchGame, fetchRoutePreview, generateRoutes, pauseGame, resetProgress, resumeGame, startGame,
-  type AdminRpcResult, type GameRow, type RoutePreview,
-} from './adminApi'
+import { endGame, fetchGame, pauseGame, resetProgress, resumeGame, startGame, type AdminRpcResult, type GameRow } from './adminApi'
+
+function errorMessage(error?: string): string {
+  switch (error) {
+    case 'no_stations':
+      return 'Add at least one clue level before starting.'
+    case 'no_teams':
+      return 'Add teams before starting.'
+    case 'level_gap':
+      return 'Levels must run 1, 2, 3… with no gaps. Fix the Stations page first.'
+    default:
+      return `Error: ${error}`
+  }
+}
 
 export default function GameControl() {
   const [game, setGame] = useState<GameRow | null>(null)
-  const [preview, setPreview] = useState<RoutePreview[]>([])
   const [message, setMessage] = useState<string | null>(null)
   const [resetText, setResetText] = useState('')
 
   const load = useCallback(async () => {
-    const [gameRow, previewRows] = await Promise.all([fetchGame(), fetchRoutePreview()])
+    const gameRow = await fetchGame()
     setGame(gameRow)
-    setPreview(previewRows)
   }, [])
 
   useEffect(() => {
@@ -25,7 +33,13 @@ export default function GameControl() {
     setMessage(null)
     try {
       const result = await action()
-      if (!result.ok) setMessage(`Error: ${result.error}`)
+      if (result.ok) {
+        if (typeof result.teams === 'number' && typeof result.levels === 'number') {
+          setMessage(`Live · ${result.teams} teams · ${result.levels} clues`)
+        }
+      } else {
+        setMessage(errorMessage(result.error))
+      }
       await load()
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e))
@@ -52,31 +66,8 @@ export default function GameControl() {
       </section>
 
       <section className="card">
-        <h2>Routes</h2>
-        <button onClick={() => run(generateRoutes)}>Generate routes</button>
-        <p className="hint">
-          In setup this reshuffles every team's route. While the hunt is running it only creates routes for
-          teams that don't have one yet.
-        </p>
-        <table className="board-table">
-          <thead>
-            <tr><th>Team</th><th>Route</th></tr>
-          </thead>
-          <tbody>
-            {preview.map(route => (
-              <tr key={route.team}>
-                <td>{route.team}</td>
-                <td>{route.stops.join(' → ')}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {preview.length === 0 && <p className="empty">No routes yet.</p>}
-      </section>
-
-      <section className="card">
         <h2>Danger zone</h2>
-        <label htmlFor="reset-confirm">Type RESET to clear all progress (teams, stations and routes are kept):</label>
+        <label htmlFor="reset-confirm">Type RESET to clear all progress (teams and stations are kept):</label>
         <input id="reset-confirm" value={resetText} onChange={e => setResetText(e.target.value)} />
         <div className="btn-row" style={{ marginTop: '0.6rem' }}>
           <button
