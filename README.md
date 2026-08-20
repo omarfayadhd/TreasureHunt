@@ -107,5 +107,6 @@ well-known local keys.
   after the team earns it.
 - Wrong codes get a generic response (no probing which codes exist).
 - 5-second server-side cooldown between attempts per team.
-- Players are anonymous; every player action goes through two RPCs
-  (`team_login`, `submit_code`) — RLS denies all direct table access.
+- Players are anonymous; every player action goes through
+  `security definer` RPCs (`team_view`, `submit_code`, `open_card`) — RLS
+  denies all direct table access.

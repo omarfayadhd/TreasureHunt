@@ -53,8 +53,9 @@ export async function openCard(teamCode: string, level: number): Promise<OpenRes
 
 /**
  * Any change to teams, the game row or card opens can change what this team
- * sees (a rival taking the last slot eliminates them without them acting), so
- * every event just triggers a refetch of the whole view.
+ * sees (a rival clearing a level moves the "found" count, a rival finishing
+ * changes placements), so every event just triggers a refetch of the whole
+ * view.
  */
 export function subscribeToGame(onChange: () => void): () => void {
   const channel = supabase

@@ -95,7 +95,8 @@ export function usePlayerGame() {
     refresh().finally(() => setRestoring(false))
   }, [restoring, refresh])
 
-  // A rival can eliminate this team without it doing anything, so stay subscribed.
+  // Rivals clearing levels or finishing change this team's race count and
+  // placement without it doing anything, so stay subscribed.
   useEffect(() => {
     if (!teamCode) return
     const unsubscribe = subscribeToGame(() => { void refresh() })

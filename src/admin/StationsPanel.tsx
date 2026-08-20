@@ -164,7 +164,7 @@ export default function StationsPanel() {
                       disabled={gameRunning}
                       title="Stations can't be deleted while the hunt is running"
                       onClick={() => {
-                        if (confirm(`Delete station "${station.name}"? Team routes that include it must be regenerated.`)) {
+                        if (confirm(`Delete station "${station.name}"? This changes the shared level ladder for every team.`)) {
                           run(() => deleteStation(station.id))
                         }
                       }}
