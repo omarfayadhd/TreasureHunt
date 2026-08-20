@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { adminClient, anonClient, createTeam, resetDb, seedStations, serviceClient, setGameStatus } from './helpers'
+import {
+  adminClient, anonClient, createTeam, resetDb, seedStations, serviceClient, setGameStatus, setRoute,
+} from './helpers'
 
 const service = serviceClient()
 
@@ -49,6 +51,39 @@ describe('admin_monitor', () => {
     const admin = await adminClient()
     const { data } = await admin.from('admin_monitor').select('wrong_count').eq('id', a.id).single()
     expect(data).toMatchObject({ wrong_count: 1 })
+  })
+
+  it('reports the location each team is hunting', async () => {
+    const stations = await seedStations(service, 3)
+    const a = await createTeam(service, 'Team 1', 'ALPHA1')
+    await setRoute(service, a.id, [
+      { level: 1, stationId: stations[0].id, code: 'AAA111' },
+      { level: 2, stationId: stations[1].id, code: 'AAA222' },
+      { level: 3, stationId: stations[2].id, code: 'AAA333' },
+    ])
+    await setGameStatus(service, 'live')
+    // Cleared level 1, so the team is hunting its level 2 location.
+    await service.from('teams').update({ current_position: 1 }).eq('id', a.id)
+
+    const admin = await adminClient()
+    const { data } = await admin.from('admin_monitor').select('name, current_location').order('name')
+    expect(data).toMatchObject([{ name: 'Team 1', current_location: 'Station 2' }])
+  })
+
+  it('leaves the location empty once a team is past its last level', async () => {
+    const stations = await seedStations(service, 2)
+    const a = await createTeam(service, 'Team 1', 'ALPHA1')
+    await setRoute(service, a.id, [
+      { level: 1, stationId: stations[0].id, code: 'AAA111' },
+      { level: 2, stationId: stations[1].id, code: 'AAA222' },
+    ])
+    await service.from('teams')
+      .update({ current_position: 2, status: 'winner', finished_at: new Date().toISOString() })
+      .eq('id', a.id)
+
+    const admin = await adminClient()
+    const { data } = await admin.from('admin_monitor').select('current_location').eq('id', a.id).single()
+    expect(data).toMatchObject({ current_location: null })
   })
 
   it('is not readable anonymously', async () => {

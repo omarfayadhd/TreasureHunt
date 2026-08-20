@@ -20,6 +20,7 @@ function row(overrides: Partial<MonitorRow>): MonitorRow {
     max_opened_level: null,
     last_solve_at: null,
     wrong_count: 0,
+    current_location: null,
     ...overrides,
   }
 }
@@ -76,5 +77,16 @@ describe('Dashboard', () => {
   it('marks a later finisher with its placing', () => {
     mount([row({ name: 'Second', status: 'finished', cleared_level: 3, finished_at: '2026-08-20T10:09:00Z' })])
     expect(screen.getByText('Second').closest('tr')).toHaveTextContent(/finished/i)
+  })
+})
+
+describe('Dashboard locations', () => {
+  it('names the location each team is hunting', () => {
+    mount([
+      row({ name: 'Movers', started: true, cleared_level: 1, current_location: 'Vault' }),
+      row({ name: 'Winners', status: 'winner', cleared_level: 3, current_location: null }),
+    ])
+    expect(screen.getByText('Movers').closest('tr')).toHaveTextContent('Vault')
+    expect(screen.getByText('Winners').closest('tr')).toHaveTextContent('—')
   })
 })

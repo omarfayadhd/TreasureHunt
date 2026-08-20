@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { createTeam, resetDb, seedStations, serviceClient, setRoute } from './helpers'
+import {
+  adminClient, anonClient, createTeam, resetDb, seedStations, serviceClient, setGameStatus, setRoute,
+} from './helpers'
 
 const service = serviceClient()
 beforeEach(async () => { await resetDb(service) })
@@ -168,5 +170,128 @@ describe('route seeding helper', () => {
 
     const { data: rows } = await service.from('team_stations').select('*')
     expect(rows).toHaveLength(3)
+  })
+})
+
+describe('route editing RPCs', () => {
+  async function setup() {
+    const stations = await seedStations(service, 3)
+    const a = await createTeam(service, 'Team 1', 'ALPHA1')
+    const b = await createTeam(service, 'Team 2', 'BETA22')
+    const admin = await adminClient()
+    return { stations, a, b, admin }
+  }
+
+  it('fills an empty cell and mints its code', async () => {
+    const { stations, a, admin } = await setup()
+    const { data, error } = await admin.rpc('set_route_cell', {
+      p_team_id: a.id, p_level: 1, p_station_id: stations[0].id,
+    })
+    expect(error).toBeNull()
+    expect(data).toMatchObject({ ok: true })
+    expect((data as { code: string }).code).toMatch(/^[A-Z0-9]{3,12}$/)
+
+    const { data: rows } = await service.from('team_stations').select('*').eq('team_id', a.id)
+    expect(rows).toHaveLength(1)
+    expect(rows![0]).toMatchObject({ level: 1, station_id: stations[0].id })
+  })
+
+  it('keeps the printed code when a cell is repointed at another location', async () => {
+    const { stations, a, admin } = await setup()
+    const first = await admin.rpc('set_route_cell', {
+      p_team_id: a.id, p_level: 1, p_station_id: stations[0].id,
+    })
+    const code = (first.data as { code: string }).code
+    const second = await admin.rpc('set_route_cell', {
+      p_team_id: a.id, p_level: 1, p_station_id: stations[1].id,
+    })
+    expect(second.data).toMatchObject({ ok: true, code })
+
+    const { data: rows } = await service.from('team_stations').select('station_id, code').eq('team_id', a.id)
+    expect(rows).toEqual([{ station_id: stations[1].id, code }])
+  })
+
+  it('refuses a location another team already holds at that level', async () => {
+    const { stations, a, b, admin } = await setup()
+    await setRoute(service, b.id, [{ level: 1, stationId: stations[0].id, code: 'BBB111' }])
+    const { data } = await admin.rpc('set_route_cell', {
+      p_team_id: a.id, p_level: 1, p_station_id: stations[0].id,
+    })
+    expect(data).toMatchObject({ ok: false, error: 'location_taken_at_level' })
+    expect(JSON.stringify(data)).not.toContain('duplicate key')
+  })
+
+  it('refuses a location this team already visits at another level', async () => {
+    const { stations, a, admin } = await setup()
+    await setRoute(service, a.id, [{ level: 1, stationId: stations[0].id, code: 'AAA111' }])
+    const { data } = await admin.rpc('set_route_cell', {
+      p_team_id: a.id, p_level: 2, p_station_id: stations[0].id,
+    })
+    expect(data).toMatchObject({ ok: false, error: 'location_used_by_team' })
+    expect(JSON.stringify(data)).not.toContain('duplicate key')
+  })
+
+  it('reissues one cell code without touching the rest of the route', async () => {
+    const { stations, a, admin } = await setup()
+    await setRoute(service, a.id, [
+      { level: 1, stationId: stations[0].id, code: 'AAA111' },
+      { level: 2, stationId: stations[1].id, code: 'AAA222' },
+    ])
+    const { data } = await admin.rpc('set_route_code', { p_team_id: a.id, p_level: 1 })
+    expect(data).toMatchObject({ ok: true })
+    const fresh = (data as { code: string }).code
+    expect(fresh).not.toBe('AAA111')
+
+    const { data: rows } = await service.from('team_stations')
+      .select('level, code').eq('team_id', a.id).order('level')
+    expect(rows).toEqual([{ level: 1, code: fresh }, { level: 2, code: 'AAA222' }])
+  })
+
+  it('refuses to reissue a code for a cell that does not exist', async () => {
+    const { a, admin } = await setup()
+    expect(await admin.rpc('set_route_code', { p_team_id: a.id, p_level: 4 }).then(r => r.data))
+      .toMatchObject({ ok: false, error: 'not_found' })
+  })
+
+  it('clears a cell', async () => {
+    const { stations, a, admin } = await setup()
+    await setRoute(service, a.id, [
+      { level: 1, stationId: stations[0].id, code: 'AAA111' },
+      { level: 2, stationId: stations[1].id, code: 'AAA222' },
+    ])
+    expect(await admin.rpc('clear_route_cell', { p_team_id: a.id, p_level: 2 }).then(r => r.data))
+      .toMatchObject({ ok: true })
+    const { data: rows } = await service.from('team_stations').select('level').eq('team_id', a.id)
+    expect(rows).toEqual([{ level: 1 }])
+  })
+
+  it('refuses every edit while the game is running', async () => {
+    const { stations, a, admin } = await setup()
+    await setRoute(service, a.id, [{ level: 1, stationId: stations[0].id, code: 'AAA111' }])
+    await setGameStatus(service, 'live')
+
+    for (const [fn, args] of [
+      ['set_route_cell', { p_team_id: a.id, p_level: 2, p_station_id: stations[1].id }],
+      ['set_route_code', { p_team_id: a.id, p_level: 1 }],
+      ['clear_route_cell', { p_team_id: a.id, p_level: 1 }],
+    ] as const) {
+      expect(await admin.rpc(fn, args).then(r => r.data), fn)
+        .toMatchObject({ ok: false, error: 'game_running' })
+    }
+    const { data: rows } = await service.from('team_stations').select('level').eq('team_id', a.id)
+    expect(rows).toEqual([{ level: 1 }])
+  })
+
+  it('is not callable anonymously', async () => {
+    const { stations, a } = await setup()
+    const anon = anonClient()
+    for (const [fn, args] of [
+      ['set_route_cell', { p_team_id: a.id, p_level: 1, p_station_id: stations[0].id }],
+      ['set_route_code', { p_team_id: a.id, p_level: 1 }],
+      ['clear_route_cell', { p_team_id: a.id, p_level: 1 }],
+    ] as const) {
+      const { error } = await anon.rpc(fn, args)
+      expect(error?.code, fn).toBe('42501')
+    }
   })
 })

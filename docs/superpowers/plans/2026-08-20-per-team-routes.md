@@ -40,7 +40,7 @@
 - Produces table `team_stations(team_id uuid, level int, station_id uuid, code text)` with PK `(team_id, level)` and uniques `(team_id, station_id)`, `(level, station_id)`, `(code)`; RLS admin-only. `stations` loses `code` and its three level/code constraints.
 - Helper `seedStations(service, count)` now creates locations WITHOUT codes and returns `{id, name, clue_text, sort_order}`. New helper `setRoute(service, teamId, [{level, stationId, code}])` inserts route rows.
 
-- [ ] **Step 1: Write the failing test** — add to `tests/integration/schema.test.ts`:
+- [x] **Step 1: Write the failing test** — add to `tests/integration/schema.test.ts`:
 
 ```ts
 describe('team_stations', () => {
@@ -114,7 +114,7 @@ describe('team_stations', () => {
 })
 ```
 
-- [ ] **Step 2: Update the helpers**
+- [x] **Step 2: Update the helpers**
 
 ```ts
 export type SeededStation = { id: string; name: string; clue_text: string; sort_order: number }
@@ -144,9 +144,9 @@ export async function setRoute(
 
 Add `team_stations` to `resetDb`'s delete list, before `teams` and `stations`.
 
-- [ ] **Step 3: Run and confirm failure** — `npx vitest run tests/integration/schema.test.ts`; expect `team_stations` missing.
+- [x] **Step 3: Run and confirm failure** — `npx vitest run tests/integration/schema.test.ts`; expect `team_stations` missing.
 
-- [ ] **Step 4: Write the migration**
+- [x] **Step 4: Write the migration**
 
 ```sql
 -- supabase/migrations/20260820000016_team_stations.sql
@@ -176,9 +176,9 @@ alter table public.stations drop constraint if exists stations_code_format;
 alter table public.stations drop column if exists code;
 ```
 
-- [ ] **Step 5: Verify** — `npx supabase db reset && npx vitest run tests/integration/schema.test.ts`. Other suites will fail until Tasks 3-5; report, don't fix.
+- [x] **Step 5: Verify** — `npx supabase db reset && npx vitest run tests/integration/schema.test.ts`. Other suites will fail until Tasks 3-5; report, don't fix.
 
-- [ ] **Step 6: Commit** — `git commit -m "feat: per-team route table, stations demote to locations"`
+- [x] **Step 6: Commit** — `git commit -m "feat: per-team route table, stations demote to locations"`
 
 ---
 
@@ -188,7 +188,7 @@ alter table public.stations drop column if exists code;
 
 **Interfaces:** Consumes `team_stations` and the existing `mint_team_code()`/`random_team_code()`. Produces nothing new — a one-time data migration that must be safe on an empty database too.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```ts
 // tests/integration/routes.test.ts
@@ -243,9 +243,9 @@ describe('route seeding helper', () => {
 })
 ```
 
-- [ ] **Step 2: Run and confirm failure** — the RPC does not exist.
+- [x] **Step 2: Run and confirm failure** — the RPC does not exist.
 
-- [ ] **Step 3: Write the migration**
+- [x] **Step 3: Write the migration**
 
 ```sql
 -- supabase/migrations/20260820000017_seed_routes.sql
@@ -311,9 +311,9 @@ select public.seed_missing_routes();
 
 If `mint_team_code()` is not the generator's name in this repo, use whatever the collision-checked minting function is called — check `supabase/migrations/20260820000013_team_admin.sql`.
 
-- [ ] **Step 4: Verify** — `npx supabase db reset && npx vitest run tests/integration/routes.test.ts` (3 cases).
+- [x] **Step 4: Verify** — `npx supabase db reset && npx vitest run tests/integration/routes.test.ts` (3 cases).
 
-- [ ] **Step 5: Commit** — `git commit -m "feat: seed staggered routes for existing teams"`
+- [x] **Step 5: Commit** — `git commit -m "feat: seed staggered routes for existing teams"`
 
 ---
 
@@ -323,7 +323,7 @@ If `mint_team_code()` is not the generator's name in this repo, use whatever the
 
 **Interfaces:** `team_view_json(uuid)` unchanged in shape except each card gains `location` (string, non-null only for unlocked levels), `total` = the team's own level count, `race.found` counts teams with `current_position >= level`.
 
-- [ ] **Step 1: Update the tests** — every case that seeded a shared ladder now seeds locations plus an explicit route. Replace the card/lock cases with:
+- [x] **Step 1: Update the tests** — every case that seeded a shared ladder now seeds locations plus an explicit route. Replace the card/lock cases with:
 
 ```ts
   it('returns one card per route level with only the first unlocked', async () => {
@@ -359,9 +359,9 @@ If `mint_team_code()` is not the generator's name in this repo, use whatever the
 
 Keep the pre-live lock case, the eliminated→finished place case and the race cases, adjusting their setup to use `setRoute`.
 
-- [ ] **Step 2: Run and confirm failure.**
+- [x] **Step 2: Run and confirm failure.**
 
-- [ ] **Step 3: Write the migration** — `create or replace function public.team_view_json(p_team_id uuid)` identical to the shipped version except the cards query, which becomes:
+- [x] **Step 3: Write the migration** — `create or replace function public.team_view_json(p_team_id uuid)` identical to the shipped version except the cards query, which becomes:
 
 ```sql
   select coalesce(
@@ -389,9 +389,9 @@ Keep the pre-live lock case, the eliminated→finished place case and the race c
 
 and `v_total` becomes `select count(*)::int into v_total from team_stations where team_id = p_team_id;`. End the migration with `revoke execute on function public.team_view_json(uuid) from public, anon;`.
 
-- [ ] **Step 4: Verify** — `npx supabase db reset && npx vitest run tests/integration/team-view.test.ts`.
+- [x] **Step 4: Verify** — `npx supabase db reset && npx vitest run tests/integration/team-view.test.ts`.
 
-- [ ] **Step 5: Commit** — `git commit -m "feat: team_view serves each team its own route"`
+- [x] **Step 5: Commit** — `git commit -m "feat: team_view serves each team its own route"`
 
 ---
 
@@ -401,7 +401,7 @@ and `v_total` becomes `select count(*)::int into v_total from team_stations wher
 
 **Interfaces:** `submit_code` returns `reason` in `'wrong' | 'already_used' | 'not_your_code'`. `attempts.result` accepts `'not_your_code'`.
 
-- [ ] **Step 1: Update the tests** — reseed with per-team routes, and add the case that is the whole point:
+- [x] **Step 1: Update the tests** — reseed with per-team routes, and add the case that is the whole point:
 
 ```ts
   it('rejects another team's code without advancing anyone', async () => {
@@ -425,9 +425,9 @@ and `v_total` becomes `select count(*)::int into v_total from team_stations wher
 
 Keep and re-seed: wrong code, already-used (own earlier level), cooldown, paused, not_playing, the winner/placement cases and the concurrent-final-level race.
 
-- [ ] **Step 2: Run and confirm failure.**
+- [x] **Step 2: Run and confirm failure.**
 
-- [ ] **Step 3: Write the migration** — extend the `attempts.result` check to add `'not_your_code'`, then `create or replace function public.submit_code(p_team_code text, p_code text)` as shipped, replacing the code-matching block with:
+- [x] **Step 3: Write the migration** — extend the `attempts.result` check to add `'not_your_code'`, then `create or replace function public.submit_code(p_team_code text, p_code text)` as shipped, replacing the code-matching block with:
 
 ```sql
   select count(*)::int into v_total from team_stations where team_id = v_team.id;
@@ -460,9 +460,9 @@ Keep and re-seed: wrong code, already-used (own earlier level), cooldown, paused
 
 The rest — cooldown, the final-level branch with the game-row lock and `clock_timestamp()`, the grant — is unchanged. Re-apply `grant execute on function public.submit_code(text, text) to anon, authenticated, service_role;`.
 
-- [ ] **Step 4: Verify** — `npx supabase db reset && npx vitest run tests/integration --no-file-parallelism`.
+- [x] **Step 4: Verify** — `npx supabase db reset && npx vitest run tests/integration --no-file-parallelism`.
 
-- [ ] **Step 5: Commit** — `git commit -m "feat: codes are team-specific, with a not_your_code answer"`
+- [x] **Step 5: Commit** — `git commit -m "feat: codes are team-specific, with a not_your_code answer"`
 
 ---
 
@@ -472,7 +472,7 @@ The rest — cooldown, the final-level branch with the game-row lock and `clock_
 
 **Interfaces:** `start_game` errors gain `route_incomplete`, `route_length_mismatch`, `not_enough_locations` and lose `level_gap`. `admin_monitor` gains `current_location text`.
 
-- [ ] **Step 1: Write the tests** — each guard rejected, a valid rotation accepted with `initial_team_count` snapshotted, and:
+- [x] **Step 1: Write the tests** — each guard rejected, a valid rotation accepted with `initial_team_count` snapshotted, and:
 
 ```ts
   it('reports the location each team is hunting', async () => {
@@ -483,9 +483,9 @@ The rest — cooldown, the final-level branch with the game-row lock and `clock_
   })
 ```
 
-- [ ] **Step 2: Run and confirm failure.**
+- [x] **Step 2: Run and confirm failure.**
 
-- [ ] **Step 3: Write the migration** — replace the station-level checks in `start_game` with:
+- [x] **Step 3: Write the migration** — replace the station-level checks in `start_game` with:
 
 ```sql
   select count(*)::int into v_locations from stations;
@@ -531,9 +531,9 @@ returning `{ok:true, status:'live', teams:v_teams, levels:v_levels}`. Then recre
 
 and re-apply the view's `revoke all … from anon` / `grant select … to authenticated`, plus the function grants.
 
-- [ ] **Step 4: Verify** — full integration suite green.
+- [x] **Step 4: Verify** — full integration suite green.
 
-- [ ] **Step 5: Commit** — `git commit -m "feat: kickoff validates routes; monitor shows current location"`
+- [x] **Step 5: Commit** — `git commit -m "feat: kickoff validates routes; monitor shows current location"`
 
 ---
 
@@ -545,17 +545,17 @@ and re-apply the view's `revoke all … from anon` / `grant select … to authen
 - SQL: `set_route_cell(p_team_id uuid, p_level int, p_station_id uuid) -> jsonb`, `set_route_code(p_team_id uuid, p_level int) -> jsonb`, `clear_route_cell(p_team_id uuid, p_level int) -> jsonb`. Each is admin-only and refuses while the game runs (`game_running`). `set_route_cell` upserts and mints a code when the cell has none; it returns `{ok:false, error:'location_taken_at_level'|'location_used_by_team'}` instead of a raw constraint error.
 - TS: `type RouteCell = { team_id: string; level: number; station_id: string; code: string }`, `fetchRoutes(): Promise<RouteCell[]>`, `setRouteCell`, `setRouteCode`, `clearRouteCell`. `Card` gains `location: string | null`; the submit `reason` union gains `'not_your_code'`; `Feedback` gains the same.
 
-- [ ] **Step 1: Write integration tests** for each RPC: happy path, both collision errors surfaced as readable codes rather than SQL text, refusal while live, and anon refusal (expect 42501).
+- [x] **Step 1: Write integration tests** for each RPC: happy path, both collision errors surfaced as readable codes rather than SQL text, refusal while live, and anon refusal (expect 42501).
 
-- [ ] **Step 2: Run and confirm failure.**
+- [x] **Step 2: Run and confirm failure.**
 
-- [ ] **Step 3: Write the migration.** Each function: `perform assert_admin()`, refuse when `game.status in ('live','paused')`, then act. In `set_route_cell`, pre-check the two collisions explicitly so the caller gets `location_taken_at_level` / `location_used_by_team`, and wrap the insert/update in an exception handler mapping `unique_violation` to the same codes. Revoke from `public, anon`, grant to `authenticated, service_role`.
+- [x] **Step 3: Write the migration.** Each function: `perform assert_admin()`, refuse when `game.status in ('live','paused')`, then act. In `set_route_cell`, pre-check the two collisions explicitly so the caller gets `location_taken_at_level` / `location_used_by_team`, and wrap the insert/update in an exception handler mapping `unique_violation` to the same codes. Revoke from `public, anon`, grant to `authenticated, service_role`.
 
-- [ ] **Step 4: Extend the client API** — the three admin wrappers plus the two type widenings. In `CardGrid.tsx`, add the `not_your_code` branch to the feedback switch with copy: `That code belongs to another team.`
+- [x] **Step 4: Extend the client API** — the three admin wrappers plus the two type widenings. In `CardGrid.tsx`, add the `not_your_code` branch to the feedback switch with copy: `That code belongs to another team.`
 
-- [ ] **Step 5: Verify** — `npx vitest run src` and the integration suite; `npx tsc --noEmit` clean.
+- [x] **Step 5: Verify** — `npx vitest run src` and the integration suite; `npx tsc --noEmit` clean.
 
-- [ ] **Step 6: Commit** — `git commit -m "feat: route-editing RPCs and client wiring"`
+- [x] **Step 6: Commit** — `git commit -m "feat: route-editing RPCs and client wiring"`
 
 ---
 
@@ -567,7 +567,7 @@ and re-apply the view's `revoke all … from anon` / `grant select … to authen
 
 **Interfaces:** `<RouteGrid teams={{id,name}[]} stations={StationRow[]} rows={RouteCell[]} disabled={boolean} onReload={() => void} />`. It consumes `setRouteCell`, `setRouteCode`, `clearRouteCell` from `adminApi` directly and calls `onReload` after a successful write.
 
-- [ ] **Step 1: Write the failing test** (`RouteGrid.test.tsx`) — cases:
+- [x] **Step 1: Write the failing test** (`RouteGrid.test.tsx`) — cases:
   - renders a cell's location name and code for a given team and level;
   - choosing a location in a cell calls `setRouteCell(teamId, level, stationId)`;
   - the "new code" button calls `setRouteCode(teamId, level)`;
@@ -576,15 +576,15 @@ and re-apply the view's `revoke all … from anon` / `grant select … to authen
   - every control is disabled when `disabled` is true;
   - the validation summary lists empty cells by team and level, flags route lengths that differ, and flags fewer locations than teams.
 
-- [ ] **Step 2: Run and confirm failure** — `npx vitest run src/admin/RouteGrid.test.tsx`.
+- [x] **Step 2: Run and confirm failure** — `npx vitest run src/admin/RouteGrid.test.tsx`.
 
-- [ ] **Step 3: Build `RouteGrid`** — a table: one row per team, one column per level (columns = longest route length, plus one trailing empty column to extend every route). Each cell holds a `<select>` of locations (blank option = clear the cell, calling `clearRouteCell`) and, when a code exists, the code in `--font-mono` with a small "new code" button. Derive the validation summary from `rows`/`teams`/`stations` in a pure helper exported for direct unit testing, e.g. `routeIssues(teams, stations, rows): string[]`.
+- [x] **Step 3: Build `RouteGrid`** — a table: one row per team, one column per level (columns = longest route length, plus one trailing empty column to extend every route). Each cell holds a `<select>` of locations (blank option = clear the cell, calling `clearRouteCell`) and, when a code exists, the code in `--font-mono` with a small "new code" button. Derive the validation summary from `rows`/`teams`/`stations` in a pure helper exported for direct unit testing, e.g. `routeIssues(teams, stations, rows): string[]`.
 
-- [ ] **Step 4: Host it in the station setup page** — in `StationsPanel.tsx`, after the locations list, render a `<h2>Team routes</h2>` section containing `<RouteGrid …/>`. Load teams (`fetchMonitor` gives `id`+`name`) and routes (`fetchRoutes`) alongside the existing stations fetch, pass `disabled={gameRunning}`, and pass `onReload` so a cell edit refreshes the grid. Update `StationsPanel.test.tsx` to stub the new API calls and assert the section renders.
+- [x] **Step 4: Host it in the station setup page** — in `StationsPanel.tsx`, after the locations list, render a `<h2>Team routes</h2>` section containing `<RouteGrid …/>`. Load teams (`fetchMonitor` gives `id`+`name`) and routes (`fetchRoutes`) alongside the existing stations fetch, pass `disabled={gameRunning}`, and pass `onReload` so a cell edit refreshes the grid. Update `StationsPanel.test.tsx` to stub the new API calls and assert the section renders.
 
-- [ ] **Step 5: Verify** — `npx vitest run src/admin`; `npx tsc --noEmit` clean.
+- [x] **Step 5: Verify** — `npx vitest run src/admin`; `npx tsc --noEmit` clean.
 
-- [ ] **Step 6: Commit** — `git commit -m "feat: team-route grid in the station setup page"`
+- [x] **Step 6: Commit** — `git commit -m "feat: team-route grid in the station setup page"`
 
 ---
 
@@ -592,17 +592,17 @@ and re-apply the view's `revoke all … from anon` / `grant select … to authen
 
 **Files:** Modify `src/admin/PrintPage.tsx` (+ test), `src/admin/StationsPanel.tsx` (+ test), `src/admin/Dashboard.tsx` (+ test), `src/player/CardGrid.tsx`/`ScratchCard.tsx` (+ `PlayerApp.test.tsx`), `README.md`.
 
-- [ ] **Step 1: Print regroups by location.** One section per location, listing every team's slip for that place: location name as the heading, then per team a card with the team name and its code in large monospace. Add a per-team clue sheet section as today. Test: two teams and two locations produce two location sections, each containing both team names, and each code appears exactly once.
+- [x] **Step 1: Print regroups by location.** One section per location, listing every team's slip for that place: location name as the heading, then per team a card with the team name and its code in large monospace. Add a per-team clue sheet section as today. Test: two teams and two locations produce two location sections, each containing both team names, and each code appears exactly once.
 
-- [ ] **Step 2: Trim the locations list** — in the same `StationsPanel`, drop the code column, the code input and its validation, and the level column and contiguity warning (routes own levels now). Keep name, clue, display order and the reorder controls, above the route grid added in Task 7. Update its tests.
+- [x] **Step 2: Trim the locations list** — in the same `StationsPanel`, drop the code column, the code input and its validation, and the level column and contiguity warning (routes own levels now). Keep name, clue, display order and the reorder controls, above the route grid added in Task 7. Update its tests.
 
-- [ ] **Step 3: Dashboard** shows `current_location` in a new column, rendering `—` when a team has finished. Update its test.
+- [x] **Step 3: Dashboard** shows `current_location` in a new column, rendering `—` when a team has finished. Update its test.
 
-- [ ] **Step 4: Player card** shows the location name for unlocked cards alongside the clue (`card.location`), and the `not_your_code` message appears in `CardGrid`. Update `PlayerApp.test.tsx`.
+- [x] **Step 4: Player card** shows the location name for unlocked cards alongside the clue (`card.location`), and the `not_your_code` message appears in `CardGrid`. Update `PlayerApp.test.tsx`.
 
-- [ ] **Step 5: README** — rewrite the rules and runbook: locations pool, per-team routes and codes, the staggering rule, at least as many locations as teams, the admin flow (teams → locations → Routes grid → print grouped by location → start), and that a code from another team is refused.
+- [x] **Step 5: README** — rewrite the rules and runbook: locations pool, per-team routes and codes, the staggering rule, at least as many locations as teams, the admin flow (teams → locations → Routes grid → print grouped by location → start), and that a code from another team is refused.
 
-- [ ] **Step 6: Full verification** — all four gates:
+- [x] **Step 6: Full verification** — all four gates:
 
 ```
 npx tsc --noEmit
@@ -611,9 +611,9 @@ npx supabase db reset && npx vitest run tests/integration --no-file-parallelism
 npm run build
 ```
 
-- [ ] **Step 7: Play one game by hand** — two teams, three locations, staggered routes. Confirm each team sees its own location, a code from the other team returns "belongs to another team" without advancing anyone, both teams can clear the same location at different levels, and the first to finish is the winner with the second placed 2nd.
+- [x] **Step 7: Play one game by hand** — two teams, three locations, staggered routes. Confirm each team sees its own location, a code from the other team returns "belongs to another team" without advancing anyone, both teams can clear the same location at different levels, and the first to finish is the winner with the second placed 2nd.
 
-- [ ] **Step 8: Commit** — `git commit -m "feat: print by location, docs and final verification"`
+- [x] **Step 8: Commit** — `git commit -m "feat: print by location, docs and final verification"`
 
 ---
 

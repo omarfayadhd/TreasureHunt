@@ -4,7 +4,14 @@ import ScratchCard from './ScratchCard'
 import type { Card } from '../lib/api'
 
 function card(overrides: Partial<Card> = {}): Card {
-  return { level: 2, unlocked: true, opened: false, clue: 'Behind the coffee machine', ...overrides }
+  return {
+    level: 2,
+    unlocked: true,
+    opened: false,
+    clue: 'Behind the coffee machine',
+    location: 'Kitchen',
+    ...overrides,
+  }
 }
 
 /**
@@ -76,7 +83,7 @@ function contextStub(): Stub {
 
 describe('ScratchCard', () => {
   it('shows a padlock and no clue for a locked card', () => {
-    render(<ScratchCard card={card({ unlocked: false, clue: null })} isCurrent={false} onOpen={vi.fn()} />)
+    render(<ScratchCard card={card({ unlocked: false, clue: null, location: null })} isCurrent={false} onOpen={vi.fn()} />)
     expect(screen.getByText(/locked/i)).toBeInTheDocument()
     expect(screen.getByText('2')).toBeInTheDocument()
   })

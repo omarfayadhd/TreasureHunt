@@ -132,6 +132,7 @@ export default function ScratchCard({ card, isCurrent, isFinal = false, onOpen }
         {isFinal ? <FlagSprite className="sprite sprite-sm" /> : <CoinSprite className="sprite sprite-sm" />}
         {card.level}
       </span>
+      {card.location && <p className="scratch-location">{card.location}</p>}
       <p className="scratch-clue">{card.clue}</p>
       {showFoil && (
         <canvas

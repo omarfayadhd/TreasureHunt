@@ -1,24 +1,20 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import {
-  createStation, deleteStation, fetchGame, fetchStations, refusal, suggestStationCode, swapOrder,
-  updateStation, type StationRow,
+  createStation, deleteStation, fetchGame, fetchMonitor, fetchRoutes, fetchStations, refusal,
+  swapOrder, updateStation, type RouteCell, type StationRow,
 } from './adminApi'
+import RouteGrid, { type RouteTeam } from './RouteGrid'
 
-type Draft = { name: string; clue_text: string; code: string }
+type Draft = { name: string; clue_text: string }
 
-const CODE = /^[A-Z0-9]{3,12}$/
-const RUNNING_HINT = 'The level ladder is locked while the hunt is running'
-
-function normalizeCode(raw: string): string {
-  return raw.trim().toUpperCase()
-}
+const RUNNING_HINT = 'Locations and routes are locked while the hunt is running'
 
 function refusalMessage(error: string): string {
   switch (error) {
     case 'game_running':
-      return 'The hunt is running — end it or reset progress before changing the level ladder.'
+      return 'The hunt is running — end it or reset progress before changing locations.'
     case 'not_found':
-      return 'That station is no longer there — the list has been refreshed.'
+      return 'That location is no longer there — the list has been refreshed.'
     default:
       return `Error: ${error}`
   }
@@ -26,34 +22,28 @@ function refusalMessage(error: string): string {
 
 export default function StationsPanel() {
   const [stations, setStations] = useState<StationRow[]>([])
+  const [teams, setTeams] = useState<RouteTeam[]>([])
+  const [routes, setRoutes] = useState<RouteCell[]>([])
   const [gameRunning, setGameRunning] = useState(false)
   const [name, setName] = useState('')
   const [clue, setClue] = useState('')
-  const [code, setCode] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [draft, setDraft] = useState<Draft>({ name: '', clue_text: '', code: '' })
+  const [draft, setDraft] = useState<Draft>({ name: '', clue_text: '' })
   const [error, setError] = useState<string | null>(null)
 
-  // Station codes are minted server-side from the same collision-checked pool as
-  // team codes, so the suggestion is fetched rather than generated in the browser.
-  const suggestCode = useCallback(async () => {
-    try {
-      setCode(await suggestStationCode())
-    } catch {
-      setCode('')
-    }
-  }, [])
-
   const load = useCallback(async () => {
-    const [stationRows, game] = await Promise.all([fetchStations(), fetchGame()])
+    const [stationRows, game, monitor, routeRows] = await Promise.all([
+      fetchStations(), fetchGame(), fetchMonitor(), fetchRoutes(),
+    ])
     setStations(stationRows)
     setGameRunning(game.status === 'live' || game.status === 'paused')
+    setTeams(monitor.map(team => ({ id: team.id, name: team.name })))
+    setRoutes(routeRows)
   }, [])
 
   useEffect(() => {
     load().catch(e => setError(e instanceof Error ? e.message : String(e)))
-    void suggestCode()
-  }, [load, suggestCode])
+  }, [load])
 
   async function run(action: () => Promise<unknown>) {
     setError(null)
@@ -69,89 +59,59 @@ export default function StationsPanel() {
   function handleCreate(event: FormEvent) {
     event.preventDefault()
     if (gameRunning) return
-    if (!name.trim() || !clue.trim() || !code.trim()) return
-    const normalizedCode = normalizeCode(code)
-    if (!CODE.test(normalizedCode)) {
-      setError('Codes are letters and numbers only, 3–12 characters.')
-      return
-    }
+    if (!name.trim() || !clue.trim()) return
     setError(null)
     const nextOrder = stations.length ? Math.max(...stations.map(s => s.sort_order)) + 1 : 1
     run(() =>
-      createStation({
-        name: name.trim(),
-        clue_text: clue.trim(),
-        code: normalizedCode,
-        sort_order: nextOrder,
-      }),
+      createStation({ name: name.trim(), clue_text: clue.trim(), sort_order: nextOrder }),
     )
     setName('')
     setClue('')
-    void suggestCode()
   }
 
   function startEdit(station: StationRow) {
     setEditingId(station.id)
-    setDraft({ name: station.name, clue_text: station.clue_text, code: station.code })
+    setDraft({ name: station.name, clue_text: station.clue_text })
   }
 
   function saveEdit(id: string) {
     if (gameRunning) return
-    const normalizedCode = normalizeCode(draft.code)
-    if (!CODE.test(normalizedCode)) {
-      setError('Codes are letters and numbers only, 3–12 characters.')
-      return
-    }
     setError(null)
-    run(() =>
-      updateStation(id, {
-        name: draft.name.trim(),
-        clue_text: draft.clue_text.trim(),
-        code: normalizedCode,
-      }),
-    )
+    run(() => updateStation(id, { name: draft.name.trim(), clue_text: draft.clue_text.trim() }))
     setEditingId(null)
   }
 
-  const levels = stations.map(s => s.sort_order)
-  const minLevel = levels.length ? Math.min(...levels) : 1
-  const maxLevel = levels.length ? Math.max(...levels) : 0
-  const hasGap = stations.length > 0 && (minLevel !== 1 || maxLevel !== stations.length)
-
   return (
     <section className="card">
-      <h2>Stations</h2>
+      <h2>Locations</h2>
       {gameRunning && (
         <p className="msg msg-warn">
-          The hunt is live — the level ladder is locked. Adding a level would move the finish line
-          mid-game, and editing a code would turn a posted paper code into a wrong answer. End the
-          hunt or reset progress first.
+          The hunt is live — locations and routes are locked. Adding a location would move the finish
+          line mid-game, and re-routing a team would turn a posted paper code into a wrong answer. End
+          the hunt or reset progress first.
         </p>
       )}
-      {hasGap && (
-        <p className="msg msg-warn">Levels must run 1 to {stations.length} with no gaps.</p>
-      )}
+      <p className="hint">
+        A location is just a place with a clue. Which team goes there, at which level, and with which
+        code is set in the team routes below.
+      </p>
       <form onSubmit={handleCreate} className="inline-form">
         <div>
-          <label htmlFor="station-name">Station name</label>
+          <label htmlFor="station-name">Location name</label>
           <input id="station-name" value={name} disabled={gameRunning} onChange={e => setName(e.target.value)} placeholder="Kitchen fridge" />
         </div>
         <div>
           <label htmlFor="station-clue">Clue leading here</label>
           <input id="station-clue" value={clue} disabled={gameRunning} onChange={e => setClue(e.target.value)} placeholder="Where lunches chill…" />
         </div>
-        <div>
-          <label htmlFor="station-code">Code</label>
-          <input id="station-code" value={code} disabled={gameRunning} onChange={e => setCode(e.target.value)} />
-        </div>
         <button type="submit" disabled={gameRunning} title={gameRunning ? RUNNING_HINT : undefined}>
-          Add station
+          Add location
         </button>
       </form>
       {error && <p className="msg msg-bad" role="alert">{error}</p>}
       <table className="board-table">
         <thead>
-          <tr><th>Level</th><th>Station</th><th>Clue</th><th>Code</th><th>Actions</th></tr>
+          <tr><th>Order</th><th>Location</th><th>Clue</th><th>Actions</th></tr>
         </thead>
         <tbody>
           {stations.map((station, index) => (
@@ -179,7 +139,6 @@ export default function StationsPanel() {
                 <>
                   <td><input aria-label="Edit name" value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} /></td>
                   <td><input aria-label="Edit clue" value={draft.clue_text} onChange={e => setDraft({ ...draft, clue_text: e.target.value })} /></td>
-                  <td><input aria-label="Edit code" value={draft.code} onChange={e => setDraft({ ...draft, code: e.target.value })} /></td>
                   <td>
                     <button onClick={() => saveEdit(station.id)}>Save</button>{' '}
                     <button className="link-btn" onClick={() => setEditingId(null)}>Cancel</button>
@@ -189,7 +148,6 @@ export default function StationsPanel() {
                 <>
                   <td>{station.name}</td>
                   <td>{station.clue_text}</td>
-                  <td><code>{station.code}</code></td>
                   <td>
                     <button
                       className="link-btn"
@@ -204,7 +162,7 @@ export default function StationsPanel() {
                       disabled={gameRunning}
                       title={RUNNING_HINT}
                       onClick={() => {
-                        if (confirm(`Delete station "${station.name}"? This changes the shared level ladder for every team.`)) {
+                        if (confirm(`Delete location "${station.name}"? Any team routed through it loses that stop.`)) {
                           run(() => deleteStation(station.id))
                         }
                       }}
@@ -218,7 +176,20 @@ export default function StationsPanel() {
           ))}
         </tbody>
       </table>
-      {stations.length === 0 && <p className="empty">No stations yet — add the locations of your hunt.</p>}
+      {stations.length === 0 && <p className="empty">No locations yet — add the places of your hunt.</p>}
+
+      <h2>Team routes</h2>
+      <p className="hint">
+        Each team walks its own route, and each cell has its own code: a code copied from another
+        team is refused. No two teams share a location at the same level.
+      </p>
+      <RouteGrid
+        teams={teams}
+        stations={stations}
+        rows={routes}
+        disabled={gameRunning}
+        onReload={() => void load()}
+      />
     </section>
   )
 }

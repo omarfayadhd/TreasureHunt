@@ -7,11 +7,15 @@ import { endGame, fetchGame, pauseGame, resetProgress, resumeGame, startGame, ty
 function errorMessage(error?: string): string {
   switch (error) {
     case 'no_stations':
-      return 'Add at least one clue level before starting.'
+      return 'Add at least one location before starting.'
     case 'no_teams':
       return 'Add teams before starting.'
-    case 'level_gap':
-      return 'Levels must run 1, 2, 3… with no gaps. Fix the Stations page first.'
+    case 'not_enough_locations':
+      return 'Add more locations: teams cannot be kept apart with fewer locations than teams.'
+    case 'route_incomplete':
+      return 'A team has an incomplete route. Fill every cell of the Team routes grid, from level 1 up.'
+    case 'route_length_mismatch':
+      return 'Every team must run the same number of levels. Even up the Team routes grid.'
     case 'not_in_setup':
       return 'The hunt has already started — this page is just out of date. Refreshing now.'
     case 'not_live':

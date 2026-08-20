@@ -1,9 +1,11 @@
 # 🗺️ Treasure Hunt
 
-A web app for running an office treasure hunt: every team climbs the same
-ladder of clues, scratching open a card at each level to reveal where the
-next code is hidden. The first team to clear the last level wins; everyone
-else keeps hunting and is placed by finish time. Nobody is ever eliminated.
+A web app for running an office treasure hunt: every team walks **its own
+route** through a shared pool of locations, scratching open a card at each
+level to reveal where its next code is hidden. Each stop has a code that
+belongs to one team only, so a code copied from a rival is refused. The first
+team to clear the last level wins; everyone else keeps hunting and is placed
+by finish time. Nobody is ever eliminated.
 Includes a realtime admin dashboard for the game master. The player view
 refreshes every few seconds (players are anonymous, so they poll rather than
 receive realtime push).
@@ -19,12 +21,22 @@ Postgres `SECURITY DEFINER` RPCs — players never get direct table access.
 
 ## Game rules
 
-- There is one shared ladder of `M` clue levels, one station per level.
-  Level 1 is unlocked for every team from the start; clearing level `L`
-  unlocks level `L + 1`.
-- **Every level has a code for every team.** A code isn't consumed by being
-  used — any number of teams can clear the same level, in any order, at any
-  time. No team is ever blocked, timed out, or knocked out of the hunt.
+- **Locations are a shared pool.** A location is just a place with a clue —
+  it has no level and no code of its own.
+- **Every team has its own route** of `M` levels through that pool
+  (`team_stations`). Level 1 is unlocked for every team from the start;
+  clearing level `L` unlocks level `L + 1`. Every team's route is the same
+  length, and a team never visits the same location twice.
+- **Every stop has its own code, and that code belongs to one team.** Typing
+  a code issued to another team is refused with "That code belongs to another
+  team" and advances nobody.
+- **The staggering rule:** no two teams are at the same location at the same
+  level. The same location serves different teams at *different* levels, so
+  there is never a queue at one place. This needs at least as many locations
+  as teams — kickoff refuses otherwise.
+- A code isn't consumed by being used — any number of teams can clear their
+  own level `L`, in any order, at any time. No team is ever blocked, timed
+  out, or knocked out of the hunt.
 - The first team to clear the final level becomes the winner. Every later
   finisher is placed behind it by finish time (2nd, 3rd, …). A team finishing
   never ends another team's hunt — everyone still playing keeps playing until
@@ -90,27 +102,40 @@ well-known local keys.
 
 1. **Teams tab** — generate teams by count (or add them one at a time); each
    gets a secret team code.
-2. **Stations tab** — create one station per clue level: a clue that leads
-   *to* it and the code posted *at* it. Levels must run 1, 2, 3… with no gaps
-   — the same station ladder is shared by every team.
-3. **Print tab** — print station cards (post them at the locations) and team
-   slips (hand them out).
-4. **Game control → Start hunt** — players open the site, enter their team
-   code, and level 1 is unlocked for everyone.
-5. Watch the **dashboard**. Scratching a card and submitting a code is always
+2. **Stations tab, Locations list** — create the pool of places: a name and
+   the clue that leads *to* it. No codes and no levels here. Add at least as
+   many locations as you have teams.
+3. **Stations tab, Team routes grid** — one row per team, one column per
+   level. Pick a location per cell; the server mints that cell's code and
+   refuses a pick that would put two teams in the same place at the same
+   level, or send one team to the same place twice. The grid lists what is
+   still missing (empty cells, uneven route lengths, too few locations).
+4. **Print tab** — one sheet per location, holding one slip per team that
+   visits it (post them side by side at that place), then team login slips to
+   hand out, then a per-team master sheet for you — **admin copy, don't hand
+   it out**.
+5. **Game control → Start hunt** — refused unless every team has a complete
+   route of the same length and there are at least as many locations as
+   teams. Players then open the site, enter their team code, and each team's
+   own level 1 is unlocked.
+6. Watch the **dashboard** — the "Hunting" column names the location each
+   team is looking for right now. Scratching a card and submitting a code is always
    recorded server-side, so the board reflects exactly what happened, in
    order. Nobody is eliminated — a stalled team just shows a stale "last
    code" time and a rising miss count; go help them in person.
-6. The first team to clear the final level becomes the winner; later
+7. The first team to clear the final level becomes the winner; later
    finishers are placed by finish time and keep playing until you end the
    game. After the win: **End hunt**. To run it again later: **Reset
-   progress** (keeps teams and stations).
+   progress** (keeps teams, locations and routes).
 
 ## How cheating is prevented
 
 - Clues and codes live only in Postgres; the browser receives a clue only
   after the team earns it.
 - Wrong codes get a generic response (no probing which codes exist).
+- Codes are team-specific: `submit_code` only ever compares against the
+  calling team's own `team_stations` rows, so a code overheard from, or
+  copied off, another team's slip is worthless.
 - 5-second server-side cooldown between attempts per team.
 - Players are anonymous; every player action goes through
   `security definer` RPCs (`team_view`, `submit_code`, `open_card`) — RLS

@@ -42,6 +42,8 @@ export default function CardGrid({ view, feedback, busy, onSubmit, onOpen }: Pro
         return { className: 'msg msg-bad shake', text: 'Wrong code. Keep hunting!', ghost: true }
       case 'already_used':
         return { className: 'msg msg-warn', text: "You've used that one — follow your newest clue!" }
+      case 'not_your_code':
+        return { className: 'msg msg-bad shake', text: 'That code belongs to another team.', ghost: true }
       case 'correct':
         return { className: 'msg msg-good', text: 'Code cracked! Next card unlocked.' }
       case 'error':

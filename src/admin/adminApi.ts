@@ -15,6 +15,8 @@ export type MonitorRow = {
   max_opened_level: number | null
   last_solve_at: string | null
   wrong_count: number
+  /** The location this team is hunting right now; null once its route is done. */
+  current_location: string | null
 }
 
 export async function fetchMonitor(): Promise<MonitorRow[]> {
@@ -66,18 +68,18 @@ export const deleteTeam = (id: string): Promise<AdminRpcResult> =>
 export const generateTeams = (count: number): Promise<AdminRpcResult> =>
   adminRpc('generate_teams', { p_count: count })
 
+/** A location: a place with a clue. Codes and levels live per team, in `team_stations`. */
 export type StationRow = {
   id: string
   name: string
   clue_text: string
-  code: string
   sort_order: number
 }
 
 export async function fetchStations(): Promise<StationRow[]> {
   const { data, error } = await supabase
     .from('stations')
-    .select('id, name, clue_text, code, sort_order')
+    .select('id, name, clue_text, sort_order')
     .order('sort_order')
   if (error) throw error
   return data as StationRow[]
@@ -86,7 +88,6 @@ export async function fetchStations(): Promise<StationRow[]> {
 export async function createStation(input: {
   name: string
   clue_text: string
-  code: string
   sort_order: number
 }): Promise<void> {
   const { error } = await supabase.from('stations').insert(input)
@@ -95,16 +96,10 @@ export async function createStation(input: {
 
 export async function updateStation(
   id: string,
-  patch: Partial<Pick<StationRow, 'name' | 'clue_text' | 'code' | 'sort_order'>>,
+  patch: Partial<Pick<StationRow, 'name' | 'clue_text' | 'sort_order'>>,
 ): Promise<void> {
   const { error } = await supabase.from('stations').update(patch).eq('id', id)
   if (error) throw error
-}
-
-export async function suggestStationCode(): Promise<string> {
-  const result = await adminRpc('suggest_station_code')
-  if (!result.ok) throw new Error(result.error ?? 'suggest_station_code failed')
-  return result.code as string
 }
 
 export async function deleteStation(id: string): Promise<void> {
@@ -133,6 +128,34 @@ export async function fetchGame(): Promise<GameRow> {
   if (error) throw error
   return data as GameRow
 }
+
+/** One cell of the teams x levels route grid: this team's stop at this level. */
+export type RouteCell = { team_id: string; level: number; station_id: string; code: string }
+
+export async function fetchRoutes(): Promise<RouteCell[]> {
+  const { data, error } = await supabase
+    .from('team_stations')
+    .select('team_id, level, station_id, code')
+    .order('level')
+  if (error) throw error
+  return data as RouteCell[]
+}
+
+// Route writes go through admin RPCs so the two staggering collisions come back
+// as readable codes rather than raw constraint names, and so a stale tab cannot
+// re-route a team mid-game.
+export const setRouteCell = (
+  teamId: string,
+  level: number,
+  stationId: string,
+): Promise<AdminRpcResult> =>
+  adminRpc('set_route_cell', { p_team_id: teamId, p_level: level, p_station_id: stationId })
+
+export const setRouteCode = (teamId: string, level: number): Promise<AdminRpcResult> =>
+  adminRpc('set_route_code', { p_team_id: teamId, p_level: level })
+
+export const clearRouteCell = (teamId: string, level: number): Promise<AdminRpcResult> =>
+  adminRpc('clear_route_cell', { p_team_id: teamId, p_level: level })
 
 export const startGame = (): Promise<AdminRpcResult> => adminRpc('start_game')
 export const pauseGame = (): Promise<AdminRpcResult> => adminRpc('pause_game')
