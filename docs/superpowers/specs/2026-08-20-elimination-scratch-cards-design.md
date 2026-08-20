@@ -98,7 +98,11 @@ create table public.card_opens (
 One row per scratch — the source of truth for "who has started" and "how far
 have they opened", independent of how far they have *cleared*.
 
-Realtime publication: `teams`, `attempts`, `card_opens`, `game`.
+Realtime publication: `teams`, `attempts`, `card_opens`, `game`. Note that
+`postgres_changes` is authorized per subscriber against RLS, so only the
+`authenticated` admin session actually receives these events — anon players
+receive none, and RLS is deliberately not opened up for them because `teams`
+holds every team's `team_code`.
 
 ## Server logic
 
@@ -195,8 +199,11 @@ cleared_level, max_opened_level, out_at_level, last_solve_at, wrong_count
 
 ## Player UI
 
-`usePlayerGame` holds the `team_view` payload and refetches on any realtime
-event touching `teams`, `game`, or the team's `card_opens`.
+`usePlayerGame` holds the `team_view` payload and re-reads it every few seconds
+(plus on window focus and after every action). This is a poll, not realtime
+push: players are anonymous, and `postgres_changes` is authorized per subscriber
+against RLS, so an anon subscriber receives no events at all. Only the admin
+dashboard gets realtime push.
 
 - **LoginScreen** — team code entry (existing floating-label field, reskinned).
 - **CardGridScreen** — replaces the old single-clue screen.

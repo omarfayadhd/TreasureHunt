@@ -1,8 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { teamView, submitCode, openCard as openCardApi, subscribeToGame, type TeamView } from '../lib/api'
+import { teamView, submitCode, openCard as openCardApi, type TeamView } from '../lib/api'
 
 const STORAGE_KEY = 'treasure_team_code'
-const POLL_MS = 30_000
+/**
+ * Polling is the ONLY refresh mechanism for players, so it has to be brisk.
+ *
+ * Supabase authorizes `postgres_changes` per subscriber against RLS, and anon
+ * has no policy on `teams`, `game` or `card_opens` (deny by default — and
+ * opening one up is not an option, `teams` holds every team's team_code).
+ * Probed against the local stack: an anon subscriber received 0 of 3 events
+ * where service_role received 3 of 3. So the player view is not realtime; it
+ * refreshes every few seconds. `subscribeToGame` stays for the admin dashboard,
+ * where the session is `authenticated` and the events genuinely arrive.
+ */
+const POLL_MS = 5_000
 
 export type Feedback =
   | { kind: 'wrong' | 'already_used' | 'correct' }
@@ -96,15 +107,15 @@ export function usePlayerGame() {
   }, [restoring, refresh])
 
   // Rivals clearing levels or finishing change this team's race count and
-  // placement without it doing anything, so stay subscribed.
+  // placement without it doing anything, so keep re-reading the view. See
+  // POLL_MS: a realtime subscription here would deliver nothing to an anon
+  // client, so this poll (plus a refresh on focus) is the whole mechanism.
   useEffect(() => {
     if (!teamCode) return
-    const unsubscribe = subscribeToGame(() => { void refresh() })
     const interval = setInterval(refresh, POLL_MS)
     const onFocus = () => refresh()
     window.addEventListener('focus', onFocus)
     return () => {
-      unsubscribe()
       clearInterval(interval)
       window.removeEventListener('focus', onFocus)
     }

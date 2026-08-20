@@ -8,7 +8,6 @@ vi.mock('../lib/api', () => ({
   teamView: vi.fn(),
   submitCode: vi.fn(),
   openCard: vi.fn(),
-  subscribeToGame: vi.fn(() => () => {}),
 }))
 
 const mockedView = vi.mocked(api.teamView)
@@ -48,6 +47,26 @@ async function loginAs(v: TeamView) {
 }
 
 describe('PlayerApp', () => {
+  // Players are anonymous and get no postgres_changes events under
+  // deny-by-default RLS, so the poll is the whole refresh mechanism.
+  it('re-reads the view every five seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      mockedView.mockResolvedValue(view())
+      localStorage.setItem('treasure_team_code', 'ALPHA1')
+      render(<PlayerApp />)
+      await vi.waitFor(() => expect(mockedView).toHaveBeenCalled())
+      const initial = mockedView.mock.calls.length
+
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(mockedView.mock.calls.length).toBe(initial + 1)
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(mockedView.mock.calls.length).toBe(initial + 2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('shows one card per level with locked cards hidden', async () => {
     await loginAs(view())
     expect(await screen.findByText('Under the plant')).toBeInTheDocument()

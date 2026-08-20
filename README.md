@@ -4,7 +4,9 @@ A web app for running an office treasure hunt: every team climbs the same
 ladder of clues, scratching open a card at each level to reveal where the
 next code is hidden. The first team to clear the last level wins; everyone
 else keeps hunting and is placed by finish time. Nobody is ever eliminated.
-Includes a realtime admin dashboard for the game master.
+Includes a realtime admin dashboard for the game master. The player view
+refreshes every few seconds (players are anonymous, so they poll rather than
+receive realtime push).
 
 Spec: `docs/superpowers/specs/2026-08-20-elimination-scratch-cards-design.md`
 (revision 2 — elimination removed; the filename keeps the word for link

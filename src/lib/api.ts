@@ -52,10 +52,13 @@ export async function openCard(teamCode: string, level: number): Promise<OpenRes
 }
 
 /**
- * Any change to teams, the game row or card opens can change what this team
- * sees (a rival clearing a level moves the "found" count, a rival finishing
- * changes placements), so every event just triggers a refetch of the whole
- * view.
+ * ADMIN ONLY. Supabase authorizes `postgres_changes` per subscriber against
+ * RLS, and anon has no policy on these tables, so an anon subscriber receives
+ * nothing at all (probed: 0 of 3 events, where service_role got 3 of 3).
+ * Opening RLS up for anon is not an option — `teams` holds every team's
+ * team_code. The admin session is `authenticated` and covered by the "admin
+ * full access" policies, so for the dashboard these events really do arrive;
+ * players fall back to polling in `usePlayerGame`.
  */
 export function subscribeToGame(onChange: () => void): () => void {
   const channel = supabase

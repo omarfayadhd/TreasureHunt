@@ -26,6 +26,7 @@ export function useMonitor() {
 
   useEffect(() => {
     void load()
+    // The admin session is `authenticated`, so these realtime events do arrive.
     const unsubscribe = subscribeToGame(() => { void load() })
     const interval = setInterval(load, 15_000)
     return () => {
