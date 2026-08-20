@@ -1,29 +1,33 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import TeamsPanel from './TeamsPanel'
 import * as adminApi from './adminApi'
-import type { BoardRow } from './adminApi'
+import type { MonitorRow } from './adminApi'
 
 vi.mock('./adminApi', () => ({
-  fetchBoard: vi.fn(),
+  fetchMonitor: vi.fn(),
   createTeam: vi.fn(),
   updateTeamName: vi.fn(),
   regenerateTeamCode: vi.fn(),
   deleteTeam: vi.fn(),
-  setTeamPosition: vi.fn(),
+  generateTeams: vi.fn(),
 }))
 
-function row(overrides: Partial<BoardRow>): BoardRow {
+function row(overrides: Partial<MonitorRow>): MonitorRow {
   return {
     id: 'team-1',
     name: 'Mongooses',
-    team_code: 'TIGER-42',
-    current_position: 2,
+    team_code: 'TIGER42',
+    status: 'playing',
+    cleared_level: 2,
+    out_at_level: null,
     finished_at: null,
+    eliminated_at: null,
     created_at: '2026-08-17T09:00:00Z',
-    total: 5,
-    next_station: 'Kitchen',
+    started: true,
+    max_opened_level: 2,
     last_solve_at: null,
+    wrong_count: 0,
     ...overrides,
   }
 }
@@ -32,44 +36,68 @@ beforeEach(() => vi.clearAllMocks())
 
 describe('TeamsPanel', () => {
   it('lists teams with codes and progress', async () => {
-    vi.mocked(adminApi.fetchBoard).mockResolvedValue([row({})])
+    vi.mocked(adminApi.fetchMonitor).mockResolvedValue([row({})])
     render(<TeamsPanel />)
     expect(await screen.findByText('Mongooses')).toBeInTheDocument()
-    expect(screen.getByText('TIGER-42')).toBeInTheDocument()
-    expect(screen.getByText('2/5')).toBeInTheDocument()
+    expect(screen.getByText('TIGER42')).toBeInTheDocument()
+    const tr = screen.getByText('Mongooses').closest('tr')!
+    const cells = within(tr).getAllByRole('cell')
+    expect(cells[2]).toHaveTextContent('2')
   })
 
   it('creates a team and reloads', async () => {
-    vi.mocked(adminApi.fetchBoard).mockResolvedValue([])
+    vi.mocked(adminApi.fetchMonitor).mockResolvedValue([])
     vi.mocked(adminApi.createTeam).mockResolvedValue(undefined)
     render(<TeamsPanel />)
     await userEvent.type(await screen.findByLabelText(/new team name/i), 'The Owls')
     await userEvent.click(screen.getByRole('button', { name: /add team/i }))
     await waitFor(() => expect(adminApi.createTeam).toHaveBeenCalledWith('The Owls'))
-    expect(vi.mocked(adminApi.fetchBoard).mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(vi.mocked(adminApi.fetchMonitor).mock.calls.length).toBeGreaterThanOrEqual(2)
   })
 
-  it('advances and rolls back a team', async () => {
-    vi.mocked(adminApi.fetchBoard).mockResolvedValue([row({})])
-    vi.mocked(adminApi.setTeamPosition).mockResolvedValue({ ok: true, position: 3 })
+  it('surfaces an action failure', async () => {
+    vi.mocked(adminApi.fetchMonitor).mockResolvedValue([])
+    vi.mocked(adminApi.createTeam).mockRejectedValue(new Error('create failed'))
     render(<TeamsPanel />)
-    await userEvent.click(await screen.findByRole('button', { name: '+1' }))
-    expect(adminApi.setTeamPosition).toHaveBeenCalledWith('team-1', 3)
-    await userEvent.click(screen.getByRole('button', { name: '-1' }))
-    expect(adminApi.setTeamPosition).toHaveBeenCalledWith('team-1', 1)
-  })
-
-  it('surfaces an rpc business failure', async () => {
-    vi.mocked(adminApi.fetchBoard).mockResolvedValue([row({})])
-    vi.mocked(adminApi.setTeamPosition).mockResolvedValue({ ok: false, error: 'invalid_team' })
-    render(<TeamsPanel />)
-    await userEvent.click(await screen.findByRole('button', { name: '+1' }))
-    expect(await screen.findByText(/invalid_team/i)).toBeInTheDocument()
+    await userEvent.type(await screen.findByLabelText(/new team name/i), 'The Owls')
+    await userEvent.click(screen.getByRole('button', { name: /add team/i }))
+    expect(await screen.findByText(/create failed/i)).toBeInTheDocument()
   })
 
   it('surfaces an initial load failure', async () => {
-    vi.mocked(adminApi.fetchBoard).mockRejectedValue(new Error('network down'))
+    vi.mocked(adminApi.fetchMonitor).mockRejectedValue(new Error('network down'))
     render(<TeamsPanel />)
     expect(await screen.findByText(/network down/i)).toBeInTheDocument()
+  })
+
+  it('generates teams from a count', async () => {
+    vi.mocked(adminApi.fetchMonitor).mockResolvedValue([])
+    vi.mocked(adminApi.generateTeams).mockResolvedValue({ ok: true, created: 3, total: 3 })
+    render(<TeamsPanel />)
+    await userEvent.clear(screen.getByLabelText(/number of teams/i))
+    await userEvent.type(screen.getByLabelText(/number of teams/i), '3')
+    await userEvent.click(screen.getByRole('button', { name: /generate teams/i }))
+    expect(adminApi.generateTeams).toHaveBeenCalledWith(3)
+    expect(await screen.findByText(/added 3 teams/i)).toBeInTheDocument()
+  })
+
+  it('surfaces the refusal when the game is already live', async () => {
+    vi.mocked(adminApi.fetchMonitor).mockResolvedValue([])
+    vi.mocked(adminApi.generateTeams).mockResolvedValue({ ok: false, error: 'game_live' })
+    render(<TeamsPanel />)
+    await userEvent.clear(screen.getByLabelText(/number of teams/i))
+    await userEvent.type(screen.getByLabelText(/number of teams/i), '4')
+    await userEvent.click(screen.getByRole('button', { name: /generate teams/i }))
+    expect(await screen.findByText(/end or reset the game first/i)).toBeInTheDocument()
+  })
+
+  it('rejects a non-integer or sub-1 count before calling the server', async () => {
+    vi.mocked(adminApi.fetchMonitor).mockResolvedValue([])
+    render(<TeamsPanel />)
+    await userEvent.clear(screen.getByLabelText(/number of teams/i))
+    await userEvent.type(screen.getByLabelText(/number of teams/i), '0')
+    await userEvent.click(screen.getByRole('button', { name: /generate teams/i }))
+    expect(await screen.findByText(/whole number of teams/i)).toBeInTheDocument()
+    expect(adminApi.generateTeams).not.toHaveBeenCalled()
   })
 })

@@ -1,17 +1,19 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import {
-  createTeam, deleteTeam, fetchBoard, regenerateTeamCode, setTeamPosition, updateTeamName,
-  type BoardRow,
+  createTeam, deleteTeam, fetchMonitor, generateTeams, regenerateTeamCode, updateTeamName,
+  type MonitorRow,
 } from './adminApi'
-import { sortBoard } from './sortBoard'
+import { comparePlacement } from '../lib/rounds'
 
 export default function TeamsPanel() {
-  const [teams, setTeams] = useState<BoardRow[]>([])
+  const [teams, setTeams] = useState<MonitorRow[]>([])
   const [name, setName] = useState('')
+  const [count, setCount] = useState('')
+  const [note, setNote] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    setTeams(sortBoard(await fetchBoard()))
+    setTeams([...(await fetchMonitor())].sort(comparePlacement))
   }, [])
 
   useEffect(() => {
@@ -38,16 +40,49 @@ export default function TeamsPanel() {
     setName('')
   }
 
-  function handleRename(team: BoardRow) {
+  function handleRename(team: MonitorRow) {
     const newName = prompt('New team name', team.name)
     if (newName && newName.trim() && newName !== team.name) {
       run(() => updateTeamName(team.id, newName.trim()))
     }
   }
 
+  async function handleGenerate(event: FormEvent) {
+    event.preventDefault()
+    const parsed = Number(count)
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      setNote('Enter a whole number of teams, 1 or more.')
+      return
+    }
+    const result = await generateTeams(parsed)
+    if (!result.ok) {
+      setNote(result.error === 'game_live'
+        ? 'End or reset the game first — teams are locked while it runs.'
+        : 'That team count looks off. Try a number between 1 and 50.')
+      return
+    }
+    setNote(`Added ${result.created} teams — ${result.total} in total.`)
+    await load()
+  }
+
   return (
     <section className="card">
       <h2>Teams</h2>
+      <form onSubmit={handleGenerate} className="inline-form" noValidate>
+        <div>
+          <label htmlFor="team-count">Number of teams</label>
+          <input
+            id="team-count"
+            type="number"
+            min={1}
+            max={50}
+            value={count}
+            onChange={e => setCount(e.target.value)}
+          />
+        </div>
+        <button type="submit">Generate teams</button>
+      </form>
+      {note && <p className="msg msg-warn">{note}</p>}
       <form onSubmit={handleCreate} className="inline-form">
         <div>
           <label htmlFor="new-team-name">New team name</label>
@@ -77,20 +112,12 @@ export default function TeamsPanel() {
                 <button className="link-btn" onClick={() => navigator.clipboard.writeText(team.team_code)}>Copy</button>
                 <button className="link-btn" onClick={() => run(() => regenerateTeamCode(team.id))}>New code</button>
               </td>
-              <td>{team.current_position}/{team.total}{team.finished_at ? ' 🏆' : ''}</td>
               <td>
-                <button
-                  onClick={() => run(() => setTeamPosition(team.id, team.current_position - 1))}
-                  disabled={team.current_position <= 0}
-                >
-                  -1
-                </button>{' '}
-                <button
-                  onClick={() => run(() => setTeamPosition(team.id, team.current_position + 1))}
-                  disabled={team.total > 0 && team.current_position >= team.total}
-                >
-                  +1
-                </button>{' '}
+                {team.cleared_level}
+                {team.status === 'eliminated' ? ` — out at ${team.out_at_level}` : ''}
+                {(team.status === 'winner' || team.status === 'finished') ? ' 🏆' : ''}
+              </td>
+              <td>
                 <button
                   className="danger"
                   onClick={() => {
