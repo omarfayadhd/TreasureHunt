@@ -28,7 +28,18 @@ async function submit(teamCode: string, code: string): Promise<Submit> {
 
 async function teamRow(id: string) {
   const { data } = await service.from('teams').select('*').eq('id', id).single()
-  return data as { current_position: number; status: string; out_at_level: number | null }
+  return data as {
+    current_position: number
+    status: string
+    out_at_level: number | null
+    finished_at: string | null
+  }
+}
+
+async function placeOf(teamCode: string): Promise<number | null> {
+  const { data, error } = await anon.rpc('team_view', { p_team_code: teamCode })
+  if (error) throw new Error(error.message)
+  return (data as { place: number | null }).place
 }
 
 /** Three teams, three levels, game live, initial_team_count snapshotted. */
@@ -141,31 +152,41 @@ describe('submit_code', () => {
     for (const id of [a.id, b.id]) expect((await teamRow(id)).current_position).toBe(2)
   })
 
-  it('serializes two teams racing to clear the FINAL level at once', async () => {
-    const { a, b } = await threeTeamGame()
-    for (const team of [['ALPHA1', a.id], ['BETA22', b.id]] as const) {
-      await submit(team[0], 'CODE1')
-      await clearCooldown(service, team[1])
-      await submit(team[0], 'CODE2')
-      await clearCooldown(service, team[1])
+  // `place` is derived by ordering on `finished_at`, but the winner decision is
+  // serialized later in the transaction on the game-row lock. A transaction-start
+  // timestamp (`now()`) can therefore disagree with lock order and label the
+  // winner 2nd. Assert the PAIRING, not two independently sorted lists, and race
+  // repeatedly because a single run can get lucky.
+  it('pairs winner with 1st place every time two teams clear the FINAL level at once', async () => {
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      await resetDb(service)
+      const { a, b } = await threeTeamGame()
+      for (const team of [['ALPHA1', a.id], ['BETA22', b.id]] as const) {
+        await submit(team[0], 'CODE1')
+        await clearCooldown(service, team[1])
+        await submit(team[0], 'CODE2')
+        await clearCooldown(service, team[1])
+      }
+
+      const [first, second] = await Promise.all([submit('ALPHA1', 'CODE3'), submit('BETA22', 'CODE3')])
+      expect(first, `run ${attempt}`).toMatchObject({ ok: true, correct: true })
+      expect(second, `run ${attempt}`).toMatchObject({ ok: true, correct: true })
+
+      const rows = [
+        { code: 'ALPHA1', ...(await teamRow(a.id)), place: await placeOf('ALPHA1') },
+        { code: 'BETA22', ...(await teamRow(b.id)), place: await placeOf('BETA22') },
+      ]
+      expect(rows.map(r => r.status).sort(), `run ${attempt}`).toEqual(['finished', 'winner'])
+
+      const winner = rows.find(r => r.status === 'winner')!
+      const runnerUp = rows.find(r => r.status === 'finished')!
+      expect(winner.place, `run ${attempt}: winner ${winner.code} must be 1st`).toBe(1)
+      expect(runnerUp.place, `run ${attempt}: finisher ${runnerUp.code} must be 2nd`).toBe(2)
+      expect(
+        winner.finished_at! <= runnerUp.finished_at!,
+        `run ${attempt}: winner finished_at ${winner.finished_at} must not be after ${runnerUp.finished_at}`,
+      ).toBe(true)
     }
-
-    const [first, second] = await Promise.all([submit('ALPHA1', 'CODE3'), submit('BETA22', 'CODE3')])
-    expect(first).toMatchObject({ ok: true, correct: true })
-    expect(second).toMatchObject({ ok: true, correct: true })
-
-    const rowA = await teamRow(a.id)
-    const rowB = await teamRow(b.id)
-    const statuses = [rowA.status, rowB.status].sort()
-    expect(statuses).toEqual(['finished', 'winner'])
-
-    const placeOf = async (code: string) => {
-      const { data, error } = await anon.rpc('team_view', { p_team_code: code })
-      if (error) throw new Error(error.message)
-      return (data as { place: number }).place
-    }
-    const places = [await placeOf('ALPHA1'), await placeOf('BETA22')].sort()
-    expect(places).toEqual([1, 2])
   })
 
   it('never lets the same team double-advance on a concurrent double-submit', async () => {
