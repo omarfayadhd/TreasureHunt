@@ -51,6 +51,22 @@ describe('GameControl', () => {
     expect(await screen.findByText(/4 teams · 4 clues/i)).toBeInTheDocument()
   })
 
+  it('explains a double-click on Start instead of showing not_in_setup', async () => {
+    vi.mocked(adminApi.startGame).mockResolvedValue({ ok: false, error: 'not_in_setup' })
+    renderPanel()
+    await userEvent.click(await screen.findByRole('button', { name: /start hunt/i }))
+    expect(await screen.findByText(/hunt has already started/i)).toBeInTheDocument()
+    expect(screen.queryByText(/not_in_setup/)).not.toBeInTheDocument()
+  })
+
+  it('explains the other stale-tab lifecycle refusals in plain language', async () => {
+    vi.mocked(adminApi.fetchGame).mockResolvedValue({ ...setupGame, status: 'live' })
+    vi.mocked(adminApi.pauseGame).mockResolvedValue({ ok: false, error: 'not_live' })
+    renderPanel()
+    await userEvent.click(await screen.findByRole('button', { name: /pause/i }))
+    expect(await screen.findByText(/nothing to pause/i)).toBeInTheDocument()
+  })
+
   it('offers Pause and End while live', async () => {
     vi.mocked(adminApi.fetchGame).mockResolvedValue({ ...setupGame, status: 'live' })
     renderPanel()

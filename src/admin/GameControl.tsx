@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { endGame, fetchGame, pauseGame, resetProgress, resumeGame, startGame, type AdminRpcResult, type GameRow } from './adminApi'
 
+// Every one of these is reachable from a stale tab or a double-click: the button
+// is drawn from a game row that may already have moved on.
 function errorMessage(error?: string): string {
   switch (error) {
     case 'no_stations':
@@ -10,6 +12,14 @@ function errorMessage(error?: string): string {
       return 'Add teams before starting.'
     case 'level_gap':
       return 'Levels must run 1, 2, 3… with no gaps. Fix the Stations page first.'
+    case 'not_in_setup':
+      return 'The hunt has already started — this page is just out of date. Refreshing now.'
+    case 'not_live':
+      return 'The hunt is not running, so there is nothing to pause. Refreshing now.'
+    case 'not_paused':
+      return 'The hunt is not paused, so there is nothing to resume. Refreshing now.'
+    case 'not_running':
+      return 'The hunt is not running, so there is nothing to end. Refreshing now.'
     default:
       return `Error: ${error}`
   }

@@ -81,7 +81,10 @@ well-known local keys.
      only account that can access the data).
 4. Deploy the frontend to Vercel (or Netlify): set `VITE_SUPABASE_URL` and
    `VITE_SUPABASE_ANON_KEY` (from Project Settings → API) and build with
-   `npm run build` (output `dist/`). `vercel.json` handles the SPA rewrite.
+   `npm run build` (output `dist/`). The SPA rewrite that keeps deep links like
+   `/admin/print` working is already committed for both hosts: `vercel.json`
+   for Vercel, `public/_redirects` for Netlify. On any other host, point every
+   unmatched path at `index.html` yourself.
 
 ## Game-day runbook
 
