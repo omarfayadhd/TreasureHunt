@@ -100,4 +100,14 @@ describe('TeamsPanel', () => {
     expect(await screen.findByText(/whole number of teams/i)).toBeInTheDocument()
     expect(adminApi.generateTeams).not.toHaveBeenCalled()
   })
+
+  it('rejects a count above the server cap of 50 before calling the server', async () => {
+    vi.mocked(adminApi.fetchMonitor).mockResolvedValue([])
+    render(<TeamsPanel />)
+    await userEvent.clear(screen.getByLabelText(/number of teams/i))
+    await userEvent.type(screen.getByLabelText(/number of teams/i), '999')
+    await userEvent.click(screen.getByRole('button', { name: /generate teams/i }))
+    expect(await screen.findByText(/between 1 and 50/i)).toBeInTheDocument()
+    expect(adminApi.generateTeams).not.toHaveBeenCalled()
+  })
 })

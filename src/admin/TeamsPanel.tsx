@@ -50,8 +50,8 @@ export default function TeamsPanel() {
   async function handleGenerate(event: FormEvent) {
     event.preventDefault()
     const parsed = Number(count)
-    if (!Number.isInteger(parsed) || parsed < 1) {
-      setNote('Enter a whole number of teams, 1 or more.')
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 50) {
+      setNote('Enter a whole number of teams between 1 and 50.')
       return
     }
     const result = await generateTeams(parsed)
