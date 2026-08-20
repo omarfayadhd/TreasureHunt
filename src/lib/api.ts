@@ -6,7 +6,7 @@ import type { TeamStatus } from './rounds'
 export type GameStatus = 'setup' | 'live' | 'paused' | 'ended'
 
 export type Card = { level: number; unlocked: boolean; opened: boolean; clue: string | null }
-export type Race = { level: number; slots: number; taken: number }
+export type Race = { level: number; found: number; teams: number }
 
 export type TeamView = {
   ok: true
@@ -26,7 +26,7 @@ export type ViewResult = { ok: false; error: 'invalid_team_code' } | TeamView
 export type SubmitResult =
   | { ok: false; error: 'invalid_team_code' | 'game_not_live' | 'not_playing' }
   | { ok: false; error: 'cooldown'; retry_after_seconds: number }
-  | { ok: true; correct: false; reason: 'wrong' | 'already_used' | 'too_late'; view: TeamView }
+  | { ok: true; correct: false; reason: 'wrong' | 'already_used'; view: TeamView }
   | { ok: true; correct: true; view: TeamView }
 
 export type OpenResult =

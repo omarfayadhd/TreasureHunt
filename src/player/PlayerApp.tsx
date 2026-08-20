@@ -3,7 +3,6 @@ import LoginScreen from './LoginScreen'
 import CardGrid from './CardGrid'
 import WaitingScreen from './WaitingScreen'
 import FinishedScreen from './FinishedScreen'
-import EliminatedScreen from './EliminatedScreen'
 
 export default function PlayerApp() {
   const game = usePlayerGame()
@@ -12,7 +11,6 @@ export default function PlayerApp() {
   if (!game.view) return <LoginScreen onLogin={game.login} error={game.loginError} busy={game.busy} />
 
   const view = game.view
-  if (view.status === 'eliminated') return <EliminatedScreen view={view} />
   if (view.status === 'winner' || view.status === 'finished') return <FinishedScreen view={view} />
   if (view.game_status !== 'live') return <WaitingScreen status={view.game_status} teamName={view.team_name} />
   return (

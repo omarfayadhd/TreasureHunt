@@ -5,7 +5,7 @@ const STORAGE_KEY = 'treasure_team_code'
 const POLL_MS = 30_000
 
 export type Feedback =
-  | { kind: 'wrong' | 'already_used' | 'correct' | 'too_late' }
+  | { kind: 'wrong' | 'already_used' | 'correct' }
   | { kind: 'cooldown'; seconds: number }
   | { kind: 'error'; message: string }
 

@@ -43,8 +43,6 @@ export default function CardGrid({ view, feedback, busy, onSubmit, onOpen }: Pro
         return { className: 'msg msg-warn', text: "You've used that one — follow your newest clue!" }
       case 'correct':
         return { className: 'msg msg-good', text: 'Code cracked! Next card unlocked.' }
-      case 'too_late':
-        return { className: 'msg msg-bad', text: 'Too late — that race just filled up.' }
       case 'error':
         return { className: 'msg msg-bad', text: feedback.message }
       case 'cooldown':

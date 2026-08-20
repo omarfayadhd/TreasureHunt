@@ -25,7 +25,7 @@ function view(overrides: Partial<TeamView> = {}): TeamView {
     total: 3,
     out_at_level: null,
     place: null,
-    race: { level: 2, slots: 2, taken: 1 },
+    race: { level: 2, found: 1, teams: 3 },
     cards: [
       { level: 1, unlocked: true, opened: true, clue: 'Under the plant' },
       { level: 2, unlocked: true, opened: false, clue: 'Behind the fridge' },
@@ -54,15 +54,9 @@ describe('PlayerApp', () => {
     expect(screen.getAllByText(/locked/i)).toHaveLength(1)
   })
 
-  it('shows the live race count', async () => {
+  it('shows how many teams have found the code it is hunting', async () => {
     await loginAs(view())
-    expect(await screen.findByText(/1 of 2 codes found/i)).toBeInTheDocument()
-    expect(screen.getByText(/1 slot left/i)).toBeInTheDocument()
-  })
-
-  it('warns when only one slot remains', async () => {
-    await loginAs(view({ race: { level: 2, slots: 2, taken: 1 } }))
-    expect(await screen.findByText(/1 slot left/i)).toHaveClass('race-urgent')
+    expect(await screen.findByText(/1 of 3 teams found this code/i)).toBeInTheDocument()
   })
 
   it('reports a scratch to the server', async () => {
@@ -74,31 +68,13 @@ describe('PlayerApp', () => {
 
   it('submits a code and renders the returned view', async () => {
     await loginAs(view())
-    mockedSubmit.mockResolvedValue({ ok: true, correct: true, view: view({ cleared: 2, race: { level: 3, slots: 1, taken: 0 } }) })
+    mockedSubmit.mockResolvedValue({ ok: true, correct: true, view: view({ cleared: 2, race: { level: 3, found: 0, teams: 3 } }) })
     await userEvent.type(screen.getByLabelText(/enter code/i), 'CODE2')
     await userEvent.click(screen.getByRole('button', { name: /submit code/i }))
     expect(await screen.findByText(/code cracked/i)).toBeInTheDocument()
   })
 
-  it('shows the too-late message when the slots filled first', async () => {
-    await loginAs(view())
-    mockedSubmit.mockResolvedValue({
-      ok: true, correct: false, reason: 'too_late',
-      view: view({ status: 'eliminated', out_at_level: 2, race: null, place: 3 }),
-    })
-    await userEvent.type(screen.getByLabelText(/enter code/i), 'CODE2')
-    await userEvent.click(screen.getByRole('button', { name: /submit code/i }))
-    expect(await screen.findByText(/game over/i)).toBeInTheDocument()
-  })
-
-  it('switches to the eliminated screen with the level reached', async () => {
-    await loginAs(view({ status: 'eliminated', out_at_level: 2, race: null, place: 3 }))
-    expect(await screen.findByText(/game over/i)).toBeInTheDocument()
-    expect(screen.getByText(/other teams found all the codes/i)).toBeInTheDocument()
-    expect(screen.getByText(/clue 2 of 3/i)).toBeInTheDocument()
-  })
-
-  it('celebrates the winner', async () => {
+  it('shows the winner screen for the first finisher', async () => {
     await loginAs(view({ status: 'winner', cleared: 3, race: null, place: 1 }))
     expect(await screen.findByText(/treasure found/i)).toBeInTheDocument()
   })
