@@ -10,6 +10,10 @@ type Props = {
 
 const REVEAL_AT = 0.55
 const BRUSH = 22
+/** Measure every Nth stroke, not every pointermove. */
+const SAMPLE_EVERY = 6
+/** Read back a 1/8-scale copy, so ~1/64 of the pixels. */
+const SAMPLE_SCALE = 8
 
 export default function ScratchCard({ card, isCurrent, onOpen }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -17,6 +21,8 @@ export default function ScratchCard({ card, isCurrent, onOpen }: Props) {
   const [revealed, setRevealed] = useState(card.opened)
   const [canScratch, setCanScratch] = useState(false)
   const reported = useRef(card.opened)
+  const strokes = useRef(0)
+  const sampleCanvas = useRef<HTMLCanvasElement | null>(null)
 
   const report = useCallback(() => {
     if (reported.current) return
@@ -52,6 +58,39 @@ export default function ScratchCard({ card, isCurrent, onOpen }: Props) {
     setCanScratch(true)
   }, [card.opened, card.unlocked])
 
+  /**
+   * Fraction of the foil that has been cleared, measured off a small offscreen
+   * copy. getImageData on the live buffer forces a synchronous GPU->CPU readback
+   * of the whole bitmap; at ~60 pointermove events a second on a phone that is
+   * the most expensive thing on the screen. Nearest-neighbour downscaling (no
+   * smoothing) makes each sampled pixel exactly one source pixel, so the
+   * fraction still means "fraction of cleared pixels".
+   */
+  const clearedFraction = useCallback((canvas: HTMLCanvasElement): number => {
+    const width = Math.floor(canvas.width / SAMPLE_SCALE)
+    const height = Math.floor(canvas.height / SAMPLE_SCALE)
+    if (width <= 0 || height <= 0) return 0
+
+    const sample = sampleCanvas.current ?? document.createElement('canvas')
+    sampleCanvas.current = sample
+    sample.width = width
+    sample.height = height
+    const context = sample.getContext('2d')
+    if (!context) return 0
+    context.imageSmoothingEnabled = false
+    context.clearRect(0, 0, width, height)
+    context.drawImage(canvas, 0, 0, width, height)
+
+    const { data } = context.getImageData(0, 0, width, height)
+    // A zero-sized (or unreadable) measurement must never count as "cleared".
+    if (data.length === 0) return 0
+    let clear = 0
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] === 0) clear++
+    }
+    return clear / (data.length / 4)
+  }, [])
+
   const scratchAt = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current
@@ -66,15 +105,11 @@ export default function ScratchCard({ card, isCurrent, onOpen }: Props) {
       context.fill()
       report()
 
-      // Sample a downscaled copy rather than the full bitmap each stroke
-      const { data } = context.getImageData(0, 0, canvas.width, canvas.height)
-      let clear = 0
-      for (let i = 3; i < data.length; i += 4 * 64) {
-        if (data[i] === 0) clear++
-      }
-      if (clear / (data.length / (4 * 64)) >= REVEAL_AT) setRevealed(true)
+      strokes.current += 1
+      if (strokes.current % SAMPLE_EVERY !== 0) return
+      if (clearedFraction(canvas) >= REVEAL_AT) setRevealed(true)
     },
-    [report],
+    [clearedFraction, report],
   )
 
   if (!card.unlocked) {
@@ -108,6 +143,9 @@ export default function ScratchCard({ card, isCurrent, onOpen }: Props) {
           }}
           onPointerMove={event => scratching && scratchAt(event)}
           onPointerUp={() => setScratching(false)}
+          // A drag interrupted by an incoming call or a browser gesture fires
+          // pointercancel, not pointerup, and would otherwise leave the flag set.
+          onPointerCancel={() => setScratching(false)}
         />
       )}
       {showFoil && !canScratch && (
