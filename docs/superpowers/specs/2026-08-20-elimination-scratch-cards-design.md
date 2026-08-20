@@ -30,7 +30,8 @@ teams. `M` and `N` are independent; any combination plays.
 - Clearing the last level `M` claims the treasure.
 
 **Slots.** Evaluated live at the moment of each clear, where `alive` is the
-number of teams still `playing` (including the submitting team):
+number of teams **not eliminated** — winners and finishers still hold the slot
+they took — including the submitting team:
 
 ```
 slots(level 1) = alive          -- the opening race eliminates nobody
@@ -43,10 +44,12 @@ with `out_at_level = L`.
 
 **Two end conditions.**
 
-- *Last standing* — when exactly one `playing` team remains, it wins
-  immediately (`status = 'winner'`), even with cards left unopened. Skipped when
-  the game started with a single team, so a solo practice run plays the ladder
-  to the end.
+- *Last standing* — when exactly one `playing` team remains and nobody has
+  finished, it wins immediately (`status = 'winner'`), even with cards left
+  unopened. Skipped when the game started with a single team, so a solo practice
+  run plays the ladder to the end. The nobody-finished guard matters when levels
+  are scarcer than teams: there, teams leave `playing` by claiming the treasure,
+  and the stragglers still deserve their shot at it.
 - *Treasure claimed* — clearing level `M` sets `finished_at` and
   `status = 'winner'` for the first finisher, `'finished'` for any later one.
 
@@ -167,8 +170,8 @@ Display only — no rule depends on it.
 6. If that clear filled the last slot, sweep: `status = 'eliminated'`,
    `eliminated_at = now()`, `out_at_level = L` for every `playing` team with
    `current_position < L`.
-7. Apply last-standing: if exactly one `playing` team remains and
-   `initial_team_count > 1`, make it the winner.
+7. Apply last-standing: if exactly one `playing` team remains,
+   `initial_team_count > 1`, and no team has finished, make it the winner.
 8. Return the fresh `team_view` payload plus `{ "correct": true }`.
 
 ### `open_card(p_team_code, p_level) -> jsonb`
