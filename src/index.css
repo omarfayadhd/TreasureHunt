@@ -252,6 +252,10 @@ code {
   display: inline-flex; align-items: center; gap: 0.35rem;
   font-family: var(--font-display); font-size: 0.625rem; color: var(--brand);
 }
+.scratch-location {
+  margin: 0.15rem 0 0.35rem; font-family: var(--font-display); font-size: 0.55rem;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
+}
 .scratch-clue { margin: 0; font-family: var(--font-body); font-size: 0.95rem; line-height: 1.45; color: var(--ink); }
 /* Sized to fill the card exactly — the component measures this box with
    getBoundingClientRect() to size its pixel buffer. No display/visibility/
@@ -327,6 +331,17 @@ code {
 .attempt-feed li { display: flex; gap: 0.45rem; align-items: baseline; font-size: 0.92rem; flex-wrap: wrap; }
 .attempt-feed time { color: var(--muted); font-size: 0.8rem; margin-left: auto; }
 
+/* ---------- Team route grid ---------- */
+/* One row per team, one column per level, plus a trailing column that extends
+   every route. Cells are narrow, so the grid scrolls sideways rather than
+   squeezing the selects. */
+.route-grid { display: block; overflow-x: auto; white-space: nowrap; }
+.route-grid select { max-width: 11rem; }
+.route-code {
+  display: flex; align-items: center; gap: 0.4rem; margin-top: 0.3rem;
+  font-family: var(--font-mono); font-size: 0.85rem;
+}
+
 /* ---------- Print sheets ---------- */
 .print-page { display: grid; gap: 1.25rem; }
 .print-section {
@@ -346,6 +361,12 @@ code {
 }
 .print-team { font-size: 1.3rem; font-weight: 700; margin: 0.4rem 0 0; }
 .print-small { color: #555; margin: 0; font-size: 0.9rem; }
+.print-heading {
+  grid-column: 1 / -1; margin: 0; font-family: var(--font-display);
+  font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.print-clues { text-align: left; margin: 0.5rem 0 0; padding-left: 1.2rem; line-height: 1.5; }
+.print-clues code { font-family: var(--font-mono); font-weight: 700; }
 @media print {
   .admin-nav, .no-print { display: none !important; }
   .admin-main { max-width: none; padding: 0; }

@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import StationsPanel from './StationsPanel'
 import * as adminApi from './adminApi'
-import type { StationRow } from './adminApi'
+import type { MonitorRow, RouteCell, StationRow } from './adminApi'
 
 vi.mock('./adminApi', () => ({
   fetchStations: vi.fn(),
@@ -11,7 +11,11 @@ vi.mock('./adminApi', () => ({
   deleteStation: vi.fn(),
   swapOrder: vi.fn(),
   fetchGame: vi.fn(),
-  suggestStationCode: vi.fn(),
+  fetchMonitor: vi.fn(),
+  fetchRoutes: vi.fn(),
+  setRouteCell: vi.fn(),
+  setRouteCode: vi.fn(),
+  clearRouteCell: vi.fn(),
   refusal: (result: unknown) =>
     result && typeof result === 'object' && 'ok' in result && (result as { ok: boolean }).ok === false
       ? ((result as { error?: string }).error ?? 'unknown')
@@ -23,8 +27,27 @@ function station(overrides: Partial<StationRow>): StationRow {
     id: 'station-1',
     name: 'Kitchen',
     clue_text: 'Where the coffee lives',
-    code: 'BEAN-42',
     sort_order: 1,
+    ...overrides,
+  }
+}
+
+function monitorRow(overrides: Partial<MonitorRow>): MonitorRow {
+  return {
+    id: 'team-1',
+    name: 'Team 1',
+    team_code: 'ALPHA1',
+    status: 'playing',
+    cleared_level: 0,
+    out_at_level: null,
+    finished_at: null,
+    eliminated_at: null,
+    created_at: '2026-08-20T00:00:00Z',
+    started: false,
+    max_opened_level: null,
+    last_solve_at: null,
+    wrong_count: 0,
+    current_location: null,
     ...overrides,
   }
 }
@@ -34,33 +57,33 @@ const setupGame = { id: 1, status: 'setup' as const, started_at: null, ended_at:
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(adminApi.fetchGame).mockResolvedValue(setupGame)
-  vi.mocked(adminApi.suggestStationCode).mockResolvedValue('AUTO11')
+  vi.mocked(adminApi.fetchMonitor).mockResolvedValue([])
+  vi.mocked(adminApi.fetchRoutes).mockResolvedValue([])
 })
 
 describe('StationsPanel', () => {
-  it('lists stations with clues and codes', async () => {
+  it('lists locations with their clues', async () => {
     vi.mocked(adminApi.fetchStations).mockResolvedValue([
       station({}),
-      station({ id: 'station-2', name: 'Treasure spot', clue_text: 'You have arrived', code: 'GOLD-99', sort_order: 2 }),
+      station({ id: 'station-2', name: 'Treasure spot', clue_text: 'You have arrived', sort_order: 2 }),
     ])
     render(<StationsPanel />)
     expect(await screen.findByText('Kitchen')).toBeInTheDocument()
     expect(screen.getByText('Where the coffee lives')).toBeInTheDocument()
-    expect(screen.getByText('BEAN-42')).toBeInTheDocument()
+    expect(screen.getByText('Treasure spot')).toBeInTheDocument()
   })
 
-  it('creates a station with the generated code', async () => {
+  it('creates a location with no code of its own', async () => {
     vi.mocked(adminApi.fetchStations).mockResolvedValue([])
     vi.mocked(adminApi.createStation).mockResolvedValue(undefined)
     render(<StationsPanel />)
-    await userEvent.type(await screen.findByLabelText(/station name/i), 'Reception')
+    await userEvent.type(await screen.findByLabelText(/location name/i), 'Reception')
     await userEvent.type(screen.getByLabelText(/clue/i), 'Where visitors wait')
-    await userEvent.click(screen.getByRole('button', { name: /add station/i }))
+    await userEvent.click(screen.getByRole('button', { name: /add location/i }))
     await waitFor(() =>
       expect(adminApi.createStation).toHaveBeenCalledWith({
         name: 'Reception',
         clue_text: 'Where visitors wait',
-        code: 'AUTO11',
         sort_order: 1,
       }),
     )
@@ -79,10 +102,10 @@ describe('StationsPanel', () => {
     expect(await screen.findByText(/network down/i)).toBeInTheDocument()
   })
 
-  it('blocks every station edit while the game is running', async () => {
+  it('blocks every location edit while the game is running', async () => {
     vi.mocked(adminApi.fetchStations).mockResolvedValue([
       station({}),
-      station({ id: 'station-2', name: 'Treasure spot', code: 'GOLD99', sort_order: 2 }),
+      station({ id: 'station-2', name: 'Treasure spot', sort_order: 2 }),
     ])
     vi.mocked(adminApi.fetchGame).mockResolvedValue({ ...setupGame, status: 'live' })
     render(<StationsPanel />)
@@ -90,42 +113,21 @@ describe('StationsPanel', () => {
     for (const button of screen.getAllByRole('button', { name: /delete/i })) expect(button).toBeDisabled()
     for (const button of screen.getAllByRole('button', { name: /edit/i })) expect(button).toBeDisabled()
     for (const button of screen.getAllByRole('button', { name: /↑|↓/ })) expect(button).toBeDisabled()
-    expect(screen.getByRole('button', { name: /add station/i })).toBeDisabled()
-    expect(screen.getByLabelText(/station name/i)).toBeDisabled()
-    expect(screen.getByLabelText(/^code$/i)).toBeDisabled()
+    expect(screen.getByRole('button', { name: /add location/i })).toBeDisabled()
+    expect(screen.getByLabelText(/location name/i)).toBeDisabled()
   })
 
   it('treats a paused hunt as running', async () => {
     vi.mocked(adminApi.fetchStations).mockResolvedValue([station({})])
     vi.mocked(adminApi.fetchGame).mockResolvedValue({ ...setupGame, status: 'paused' })
     render(<StationsPanel />)
-    expect(await screen.findByRole('button', { name: /add station/i })).toBeDisabled()
+    expect(await screen.findByRole('button', { name: /add location/i })).toBeDisabled()
   })
 
-  it('labels the ordering column as level', async () => {
-    vi.mocked(adminApi.fetchStations).mockResolvedValue([
-      { id: '1', name: 'Kitchen', clue_text: 'Where the mugs live', code: 'KITCH1', sort_order: 1 },
-    ])
-    render(<StationsPanel />)
-    expect(await screen.findByText(/level/i)).toBeInTheDocument()
-  })
-
-  it('rejects a code with a space or symbol before saving', async () => {
-    vi.mocked(adminApi.fetchStations).mockResolvedValue([])
-    render(<StationsPanel />)
-    await userEvent.type(screen.getByLabelText(/name/i), 'Kitchen')
-    await userEvent.type(screen.getByLabelText(/clue/i), 'Where the mugs live')
-    await userEvent.clear(screen.getByLabelText(/code/i))
-    await userEvent.type(screen.getByLabelText(/code/i), 'NOT OK!')
-    await userEvent.click(screen.getByRole('button', { name: /add station/i }))
-    expect(await screen.findByText(/letters and numbers only/i)).toBeInTheDocument()
-    expect(adminApi.createStation).not.toHaveBeenCalled()
-  })
-
-  it('reorders a level through the server-side swap', async () => {
+  it('reorders a location through the server-side swap', async () => {
     vi.mocked(adminApi.fetchStations).mockResolvedValue([
       station({}),
-      station({ id: 'station-2', name: 'Treasure spot', code: 'GOLD99', sort_order: 2 }),
+      station({ id: 'station-2', name: 'Treasure spot', sort_order: 2 }),
     ])
     vi.mocked(adminApi.swapOrder).mockResolvedValue({ ok: true })
     render(<StationsPanel />)
@@ -142,7 +144,7 @@ describe('StationsPanel', () => {
   it('surfaces the server refusal when reordering during a running hunt', async () => {
     vi.mocked(adminApi.fetchStations).mockResolvedValue([
       station({}),
-      station({ id: 'station-2', name: 'Treasure spot', code: 'GOLD99', sort_order: 2 }),
+      station({ id: 'station-2', name: 'Treasure spot', sort_order: 2 }),
     ])
     vi.mocked(adminApi.swapOrder).mockResolvedValue({ ok: false, error: 'game_running' })
     render(<StationsPanel />)
@@ -151,12 +153,34 @@ describe('StationsPanel', () => {
     expect(await screen.findByText(/end it or reset progress/i)).toBeInTheDocument()
   })
 
-  it('warns when levels are not contiguous from 1', async () => {
-    vi.mocked(adminApi.fetchStations).mockResolvedValue([
-      { id: '1', name: 'A', clue_text: 'a', code: 'AAA1', sort_order: 1 },
-      { id: '2', name: 'C', clue_text: 'c', code: 'CCC3', sort_order: 3 },
+  it('hosts the team-route grid on the same page', async () => {
+    const stations = [station({}), station({ id: 'station-2', name: 'Treasure spot', sort_order: 2 })]
+    const routes: RouteCell[] = [
+      { team_id: 'team-1', level: 1, station_id: 'station-1', code: 'AAA111' },
+      { team_id: 'team-2', level: 1, station_id: 'station-2', code: 'BBB111' },
+    ]
+    vi.mocked(adminApi.fetchStations).mockResolvedValue(stations)
+    vi.mocked(adminApi.fetchRoutes).mockResolvedValue(routes)
+    vi.mocked(adminApi.fetchMonitor).mockResolvedValue([
+      monitorRow({}),
+      monitorRow({ id: 'team-2', name: 'Team 2', team_code: 'BETA22' }),
+    ])
+
+    render(<StationsPanel />)
+    expect(await screen.findByRole('heading', { name: /team routes/i })).toBeInTheDocument()
+    expect(screen.getByLabelText('Team 1 level 1 location')).toHaveValue('station-1')
+    expect(screen.getByLabelText('Team 2 level 1 location')).toHaveValue('station-2')
+    expect(screen.getByText('AAA111')).toBeInTheDocument()
+  })
+
+  it('locks the route grid while the hunt runs', async () => {
+    vi.mocked(adminApi.fetchStations).mockResolvedValue([station({})])
+    vi.mocked(adminApi.fetchGame).mockResolvedValue({ ...setupGame, status: 'live' })
+    vi.mocked(adminApi.fetchMonitor).mockResolvedValue([monitorRow({})])
+    vi.mocked(adminApi.fetchRoutes).mockResolvedValue([
+      { team_id: 'team-1', level: 1, station_id: 'station-1', code: 'AAA111' },
     ])
     render(<StationsPanel />)
-    expect(await screen.findByText(/levels must run 1 to 2/i)).toBeInTheDocument()
+    expect(await screen.findByLabelText('Team 1 level 1 location')).toBeDisabled()
   })
 })
