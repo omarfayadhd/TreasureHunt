@@ -14,17 +14,19 @@ const COLOURS = [48, 12, 320, 190, 130]
  * hidden animation loop, no wasted frames — and the sound has its own mute that
  * survives a reload. Both are decoration: the win screen reads fine without them.
  */
-export default function Celebration() {
+type Props = {
+  /** Bump to celebrate again — the winner tapping the chest, as often as they like. */
+  burst?: number
+}
+
+export default function Celebration({ burst = 0 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const played = useRef(false)
   const [muted, setMutedState] = useState(() => isMuted())
   const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 
   useEffect(() => {
-    if (played.current) return
-    played.current = true
     playFanfare()
-  }, [])
+  }, [burst])
 
   useEffect(() => {
     if (reduced) return
@@ -69,7 +71,7 @@ export default function Celebration() {
     }
     raf = requestAnimationFrame(draw)
     return () => cancelAnimationFrame(raf)
-  }, [reduced])
+  }, [reduced, burst])
 
   return (
     <>

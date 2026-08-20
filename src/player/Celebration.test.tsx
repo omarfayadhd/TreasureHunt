@@ -4,6 +4,7 @@ import * as fanfare from '../lib/fanfare'
 
 vi.mock('../lib/fanfare', () => ({
   playFanfare: vi.fn(),
+  playUnlock: vi.fn(),
   isMuted: vi.fn(() => false),
   setMuted: vi.fn(),
 }))
@@ -37,6 +38,15 @@ describe('Celebration', () => {
     render(<Celebration />)
     expect(screen.getByRole('button', { name: /unmute|sound off/i })).toBeInTheDocument()
     expect(fanfare.playFanfare).toHaveBeenCalled()
+  })
+
+  it('fires again on every burst', () => {
+    const { rerender } = render(<Celebration burst={0} />)
+    expect(fanfare.playFanfare).toHaveBeenCalledTimes(1)
+    rerender(<Celebration burst={1} />)
+    expect(fanfare.playFanfare).toHaveBeenCalledTimes(2)
+    rerender(<Celebration burst={2} />)
+    expect(fanfare.playFanfare).toHaveBeenCalledTimes(3)
   })
 
   it('skips the confetti canvas for reduced motion', () => {

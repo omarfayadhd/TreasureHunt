@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { TeamView } from '../lib/api'
 import { ChestSprite } from './sprites'
 import Celebration from './Celebration'
@@ -9,10 +10,20 @@ import Celebration from './Celebration'
  */
 export default function FinishedScreen({ view }: { view: TeamView }) {
   const demo = view.demo_won && view.status !== 'winner'
+  // Tapping the chest celebrates again. Winning once is the moment; letting the
+  // team set it off as often as they like is the rest of the fun.
+  const [bursts, setBursts] = useState(0)
   return (
     <div className="player-screen center-screen treasure">
-      <Celebration />
-      <ChestSprite className="sprite sprite-xl" />
+      <Celebration burst={bursts} />
+      <button
+        type="button"
+        className="chest-button"
+        aria-label="Celebrate the treasure again"
+        onClick={() => setBursts(count => count + 1)}
+      >
+        <ChestSprite className="sprite sprite-xl" />
+      </button>
       <h1 className="win-title">TREASURE FOUND!</h1>
       <p className="rank-line">
         {demo ? `${view.team_name} — demo run complete` : `${view.team_name} got there first!`}
