@@ -1,5 +1,4 @@
 import { supabase } from '../lib/supabaseClient'
-import { generateCode } from '../lib/codes'
 import type { TeamStatus } from '../lib/api'
 
 export type MonitorRow = {
@@ -67,25 +66,20 @@ export function refusal(result: unknown): string | null {
   return null
 }
 
-export async function createTeam(name: string): Promise<void> {
-  const { error } = await supabase.from('teams').insert({ name, team_code: generateCode() })
-  if (error) throw error
-}
+// Team writes all go through admin RPCs: they check the game status server-side
+// (so a stale tab can't eject a live team) and mint codes from the
+// collision-checked server generator rather than a guessable browser word list.
+export const createTeam = (name: string): Promise<AdminRpcResult> =>
+  adminRpc('create_team', { p_name: name })
 
-export async function updateTeamName(id: string, name: string): Promise<void> {
-  const { error } = await supabase.from('teams').update({ name }).eq('id', id)
-  if (error) throw error
-}
+export const updateTeamName = (id: string, name: string): Promise<AdminRpcResult> =>
+  adminRpc('rename_team', { p_team_id: id, p_name: name })
 
-export async function regenerateTeamCode(id: string): Promise<void> {
-  const { error } = await supabase.from('teams').update({ team_code: generateCode() }).eq('id', id)
-  if (error) throw error
-}
+export const regenerateTeamCode = (id: string): Promise<AdminRpcResult> =>
+  adminRpc('regenerate_team_code', { p_team_id: id })
 
-export async function deleteTeam(id: string): Promise<void> {
-  const { error } = await supabase.from('teams').delete().eq('id', id)
-  if (error) throw error
-}
+export const deleteTeam = (id: string): Promise<AdminRpcResult> =>
+  adminRpc('delete_team', { p_team_id: id })
 
 export const generateTeams = (count: number): Promise<AdminRpcResult> =>
   adminRpc('generate_teams', { p_count: count })
@@ -123,6 +117,12 @@ export async function updateStation(
 ): Promise<void> {
   const { error } = await supabase.from('stations').update(patch).eq('id', id)
   if (error) throw error
+}
+
+export async function suggestStationCode(): Promise<string> {
+  const result = await adminRpc('suggest_station_code')
+  if (!result.ok) throw new Error(result.error ?? 'suggest_station_code failed')
+  return result.code as string
 }
 
 export async function deleteStation(id: string): Promise<void> {

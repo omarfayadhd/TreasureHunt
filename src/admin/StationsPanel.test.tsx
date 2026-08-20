@@ -11,13 +11,12 @@ vi.mock('./adminApi', () => ({
   deleteStation: vi.fn(),
   swapOrder: vi.fn(),
   fetchGame: vi.fn(),
+  suggestStationCode: vi.fn(),
   refusal: (result: unknown) =>
     result && typeof result === 'object' && 'ok' in result && (result as { ok: boolean }).ok === false
       ? ((result as { error?: string }).error ?? 'unknown')
       : null,
 }))
-
-vi.mock('../lib/codes', () => ({ generateCode: () => 'AUTO11' }))
 
 function station(overrides: Partial<StationRow>): StationRow {
   return {
@@ -35,6 +34,7 @@ const setupGame = { id: 1, status: 'setup' as const, started_at: null, ended_at:
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(adminApi.fetchGame).mockResolvedValue(setupGame)
+  vi.mocked(adminApi.suggestStationCode).mockResolvedValue('AUTO11')
 })
 
 describe('StationsPanel', () => {
@@ -79,11 +79,27 @@ describe('StationsPanel', () => {
     expect(await screen.findByText(/network down/i)).toBeInTheDocument()
   })
 
-  it('blocks station deletion while the game is running', async () => {
-    vi.mocked(adminApi.fetchStations).mockResolvedValue([station({})])
+  it('blocks every station edit while the game is running', async () => {
+    vi.mocked(adminApi.fetchStations).mockResolvedValue([
+      station({}),
+      station({ id: 'station-2', name: 'Treasure spot', code: 'GOLD99', sort_order: 2 }),
+    ])
     vi.mocked(adminApi.fetchGame).mockResolvedValue({ ...setupGame, status: 'live' })
     render(<StationsPanel />)
-    expect(await screen.findByRole('button', { name: /delete/i })).toBeDisabled()
+    expect(await screen.findAllByRole('button', { name: /delete/i })).toHaveLength(2)
+    for (const button of screen.getAllByRole('button', { name: /delete/i })) expect(button).toBeDisabled()
+    for (const button of screen.getAllByRole('button', { name: /edit/i })) expect(button).toBeDisabled()
+    for (const button of screen.getAllByRole('button', { name: /↑|↓/ })) expect(button).toBeDisabled()
+    expect(screen.getByRole('button', { name: /add station/i })).toBeDisabled()
+    expect(screen.getByLabelText(/station name/i)).toBeDisabled()
+    expect(screen.getByLabelText(/^code$/i)).toBeDisabled()
+  })
+
+  it('treats a paused hunt as running', async () => {
+    vi.mocked(adminApi.fetchStations).mockResolvedValue([station({})])
+    vi.mocked(adminApi.fetchGame).mockResolvedValue({ ...setupGame, status: 'paused' })
+    render(<StationsPanel />)
+    expect(await screen.findByRole('button', { name: /add station/i })).toBeDisabled()
   })
 
   it('labels the ordering column as level', async () => {
@@ -99,6 +115,7 @@ describe('StationsPanel', () => {
     render(<StationsPanel />)
     await userEvent.type(screen.getByLabelText(/name/i), 'Kitchen')
     await userEvent.type(screen.getByLabelText(/clue/i), 'Where the mugs live')
+    await userEvent.clear(screen.getByLabelText(/code/i))
     await userEvent.type(screen.getByLabelText(/code/i), 'NOT OK!')
     await userEvent.click(screen.getByRole('button', { name: /add station/i }))
     expect(await screen.findByText(/letters and numbers only/i)).toBeInTheDocument()
